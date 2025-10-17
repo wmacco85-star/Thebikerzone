@@ -1,329 +1,187 @@
 <!DOCTYPE html>
 <html lang="it">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TheBikerZone | Community per motociclisti</title>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TheBikerZone | Social Feed</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-storage-compat.js"></script>
+</head>
+<body class="bg-gray-50">
+  <div id="root"></div>
 
-    <!-- TailwindCSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
 
-    <!-- React e ReactDOM -->
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBmbEztflh7PrcHKggM2-lzoMhzNkOup5o",
+      authDomain: "thebikerzone-54094.firebaseapp.com",
+      projectId: "thebikerzone-54094",
+      storageBucket: "thebikerzone-54094.firebasestorage.app",
+      messagingSenderId: "654294837831",
+      appId: "1:654294837831:web:1c73e7707de9a2fd4a5f62"
+    };
 
-    <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+    const storage = firebase.storage();
+    const provider = new firebase.auth.GoogleAuthProvider();
 
-    <link
-      rel="icon"
-      href="https://cdn-icons-png.flaticon.com/512/1085/1085783.png"
-    />
-  </head>
+    function App() {
+      const [user, setUser] = useState(null);
+      const [posts, setPosts] = useState([]);
+      const [newPost, setNewPost] = useState({ content: "", images: [], videos: [], productLinks: [], tags: "" });
+      const [loading, setLoading] = useState(true);
+      const [commentInputs, setCommentInputs] = useState({});
+      const [carouselIndex, setCarouselIndex] = useState({});
+      const [linkPreview, setLinkPreview] = useState(null);
 
-  <body class="bg-gray-50">
-    <div id="root"></div>
+      useEffect(() => {
+        const unsubAuth = auth.onAuthStateChanged(u => setUser(u));
+        loadPosts();
+        return () => unsubAuth();
+      }, []);
 
-    <script type="text/javascript">
-      const { useState, useEffect } = React;
+      async function loadPosts() {
+        setLoading(true);
+        const snapshot = await db.collection("posts").orderBy("created_at", "desc").get();
+        const data = await Promise.all(snapshot.docs.map(async doc => {
+          const post = { id: doc.id, ...doc.data() };
+          const commentsSnap = await db.collection("posts").doc(doc.id).collection("comments").orderBy("created_at", "asc").get();
+          post.comments = commentsSnap.docs.map(c => c.data());
+          return post;
+        }));
+        setPosts(data);
+        setLoading(false);
+      }
 
-      // 🔥 CONFIGURAZIONE FIREBASE INTEGRATA
-      const firebaseConfig = {
-        apiKey: "AIzaSyBmbEztflh7PrcHKggM2-lzoMhzNkOup5o",
-        authDomain: "thebikerzone-54094.firebaseapp.com",
-        projectId: "thebikerzone-54094",
-        storageBucket: "thebikerzone-54094.firebasestorage.app",
-        messagingSenderId: "654294837831",
-        appId: "1:654294837831:web:1c73e7707de9a2fd4a5f62"
-      };
+      async function uploadFile(file, folder) {
+        const ref = storage.ref().child(`${folder}/${Date.now()}_${file.name}`);
+        await ref.put(file);
+        return await ref.getDownloadURL();
+      }
 
-      firebase.initializeApp(firebaseConfig);
-      const db = firebase.firestore();
-      const auth = firebase.auth();
-      const provider = new firebase.auth.GoogleAuthProvider();
+      async function addPost(e) {
+        e.preventDefault();
+        if (!user) return alert("Accedi con Google per postare!");
 
-      function App() {
-        const [user, setUser] = useState(null);
-        const [posts, setPosts] = useState([]);
-        const [loading, setLoading] = useState(true);
-        const [newPost, setNewPost] = useState({
-          title: "",
-          content: "",
-          type: "tip",
+        const imagesUrls = [];
+        const videosUrls = [];
+        for (const img of newPost.images) { imagesUrls.push(await uploadFile(img, "images")); }
+        for (const vid of newPost.videos) { videosUrls.push(await uploadFile(vid, "videos")); }
+        const linksArray = newPost.productLinks.filter(l => l.trim() !== "");
+
+        await db.collection("posts").add({
+          content: newPost.content,
+          username: user.displayName,
+          likes: 0,
+          created_at: new Date(),
+          images: imagesUrls,
+          videos: videosUrls,
+          productLinks: linksArray,
+          tags: newPost.tags.split(",").map(t => t.trim()).filter(Boolean)
         });
-        const [commentInputs, setCommentInputs] = useState({});
 
-        // 🔄 Ascolta login/logout in tempo reale
-        useEffect(() => {
-          const unsubscribe = auth.onAuthStateChanged((u) => setUser(u));
-          loadPosts();
-          return () => unsubscribe();
-        }, []);
+        setNewPost({ content: "", images: [], videos: [], productLinks: [], tags: "" });
+        loadPosts();
+      }
 
-        async function loadPosts() {
-          setLoading(true);
-          try {
-            const snapshot = await db
-              .collection("posts")
-              .orderBy("created_at", "desc")
-              .get();
-            const data = await Promise.all(
-              snapshot.docs.map(async (doc) => {
-                const postData = { id: doc.id, ...doc.data() };
-                const commentsSnap = await db
-                  .collection("posts")
-                  .doc(doc.id)
-                  .collection("comments")
-                  .orderBy("created_at", "asc")
-                  .get();
-                postData.comments = commentsSnap.docs.map((c) => c.data());
-                return postData;
-              })
-            );
-            setPosts(data);
-          } catch (err) {
-            console.error("Errore caricamento post:", err);
-          }
-          setLoading(false);
+      async function addLike(id) {
+        if (!user) return alert("Accedi per mettere mi piace!");
+        const ref = db.collection("posts").doc(id);
+        await db.runTransaction(async tx => {
+          const doc = await tx.get(ref);
+          if (!doc.exists) return;
+          tx.update(ref, { likes: (doc.data().likes || 0) + 1 });
+        });
+        loadPosts();
+      }
+
+      async function addComment(postId) {
+        if (!user) return alert("Accedi per commentare!");
+        const text = commentInputs[postId];
+        if (!text || text.trim() === "") return;
+        await db.collection("posts").doc(postId).collection("comments").add({
+          text, username: user.displayName, created_at: new Date()
+        });
+        setCommentInputs({ ...commentInputs, [postId]: "" });
+        loadPosts();
+      }
+
+      function handleFileChange(e, type) {
+        const files = Array.from(e.target.files);
+        if (type === "image") setNewPost({ ...newPost, images: files });
+        if (type === "video") setNewPost({ ...newPost, videos: files });
+      }
+
+      function prevCarousel(postId, length) {
+        setCarouselIndex({ ...carouselIndex, [postId]: (carouselIndex[postId] || 0) - 1 < 0 ? length - 1 : (carouselIndex[postId] || 0) - 1 });
+      }
+
+      function nextCarousel(postId, length) {
+        setCarouselIndex({ ...carouselIndex, [postId]: (carouselIndex[postId] || 0) + 1 >= length ? 0 : (carouselIndex[postId] || 0) + 1 });
+      }
+
+      async function fetchLinkPreview(url) {
+        if (!url) {
+          setLinkPreview(null);
+          return;
         }
-
-        async function addPost(e) {
-          e.preventDefault();
-          if (!user) return alert("Effettua il login per postare!");
-          await db.collection("posts").add({
-            ...newPost,
-            username: user.displayName,
-            userId: user.uid,
-            likes: 0,
-            created_at: new Date(),
-          });
-          setNewPost({ title: "", content: "", type: "tip" });
-          loadPosts();
-        }
-
-        async function addLike(id) {
-          if (!user) return alert("Effettua il login per mettere Mi Piace!");
-          const postRef = db.collection("posts").doc(id);
-          await db.runTransaction(async (tx) => {
-            const doc = await tx.get(postRef);
-            if (!doc.exists) return;
-            const newLikes = (doc.data().likes || 0) + 1;
-            tx.update(postRef, { likes: newLikes });
-          });
-          loadPosts();
-        }
-
-        async function addComment(postId) {
-          if (!user) return alert("Effettua il login per commentare!");
-          const text = commentInputs[postId];
-          if (!text || text.trim() === "") return;
-          await db
-            .collection("posts")
-            .doc(postId)
-            .collection("comments")
-            .add({
-              text,
-              username: user.displayName,
-              userId: user.uid,
-              created_at: new Date(),
+        try {
+          const response = await fetch(`https://api.opengraph.io/api/1.1/site/${encodeURIComponent(url)}?app_id=YOUR_APP_ID`);
+          const data = await response.json();
+          if (data && data.hybridGraph) {
+            setLinkPreview({
+              title: data.hybridGraph.title,
+              description: data.hybridGraph.description,
+              image: data.hybridGraph.image
             });
-          setCommentInputs({ ...commentInputs, [postId]: "" });
-          loadPosts();
-        }
-
-        async function loginGoogle() {
-          try {
-            await auth.signInWithPopup(provider);
-          } catch (err) {
-            console.error("Errore login:", err);
+          } else {
+            setLinkPreview(null);
           }
+        } catch (error) {
+          console.error("Errore nel recupero dell'anteprima del link:", error);
+          setLinkPreview(null);
         }
+      }
 
-        async function logout() {
-          await auth.signOut();
-        }
+      return (
+        <div className="max-w-3xl mx-auto py-6">
+          <header className="flex justify-between items-center mb-6">
+            <h1 className="text-3xl font-bold text-orange-600">🏍️ TheBikerZone</h1>
+            {user ? (
+              <div className="flex items-center gap-3">
+                <span>👋 {user.displayName}</span>
+                <button onClick={() => auth.signOut()} className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">Logout</button>
+              </div>
+            ) : (
+              <button onClick={() => auth.signInWithPopup(provider)} className="px-3 py-1 bg-orange-600 text-white rounded hover:bg-orange-700">Accedi con Google</button>
+            )}
+          </header>
 
-        return React.createElement(
-          "div",
-          { className: "min-h-screen flex flex-col" },
-
-          // HEADER
-          React.createElement(
-            "header",
-            {
-              className:
-                "bg-white shadow p-4 flex justify-between items-center",
-            },
-            React.createElement(
-              "h1",
-              { className: "text-2xl font-bold text-orange-600" },
-              "🏍️ TheBikerZone"
-            ),
-            user
-              ? React.createElement(
-                  "div",
-                  { className: "flex items-center space-x-3" },
-                  React.createElement(
-                    "span",
-                    { className: "text-gray-700" },
-                    "👋 ",
-                    user.displayName
-                  ),
-                  React.createElement(
-                    "button",
-                    {
-                      onClick: logout,
-                      className:
-                        "border border-gray-300 px-3 py-1 rounded hover:bg-gray-100",
-                    },
-                    "Logout"
-                  )
-                )
-              : React.createElement(
-                  "button",
-                  {
-                    className:
-                      "bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded",
-                    onClick: loginGoogle,
-                  },
-                  "🚀 Accedi con Google"
-                )
-          ),
-
-          // FORM POST
-          user &&
-            React.createElement(
-              "form",
-              {
-                onSubmit: addPost,
-                className:
-                  "bg-white p-4 m-4 rounded shadow flex flex-col gap-3",
-              },
-              React.createElement("input", {
-                type: "text",
-                placeholder: "Titolo del post",
-                value: newPost.title,
-                onChange: (e) =>
-                  setNewPost({ ...newPost, title: e.target.value }),
-                className: "border p-2 rounded",
-                required: true,
-              }),
-              React.createElement("textarea", {
-                placeholder: "Scrivi la tua esperienza...",
-                value: newPost.content,
-                onChange: (e) =>
-                  setNewPost({ ...newPost, content: e.target.value }),
-                className: "border p-2 rounded",
-                required: true,
-              }),
-              React.createElement(
-                "button",
-                {
-                  type: "submit",
-                  className:
-                    "bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded",
-                },
-                "🏁 Pubblica"
-              )
-            ),
-
-          // LISTA POST
-          React.createElement(
-            "main",
-            { className: "flex-1 container mx-auto p-4" },
-            loading
-              ? React.createElement(
-                  "p",
-                  { className: "text-center" },
-                  "⏳ Caricamento post..."
-                )
-              : posts.length === 0
-              ? React.createElement(
-                  "p",
-                  { className: "text-center text-gray-500" },
-                  "Nessun post ancora! ✨"
-                )
-              : posts.map((post) =>
-                  React.createElement(
-                    "div",
-                    {
-                      key: post.id,
-                      className:
-                        "bg-white rounded shadow p-4 mb-4 transition hover:shadow-lg",
-                    },
-                    React.createElement(
-                      "h2",
-                      { className: "text-xl font-semibold" },
-                      post.title
-                    ),
-                    React.createElement(
-                      "p",
-                      { className: "text-gray-700 my-2" },
-                      post.content
-                    ),
-                    React.createElement(
-                      "div",
-                      { className: "flex justify-between items-center mt-3" },
-                      React.createElement(
-                        "span",
-                        { className: "text-sm text-gray-500" },
-                        "✍️ ",
-                        post.username || "Anonimo",
-                        " • ",
-                        new Date(
-                          post.created_at?.seconds * 1000 || post.created_at
-                        ).toLocaleDateString()
-                      ),
-                      React.createElement(
-                        "button",
-                        {
-                          onClick: () => addLike(post.id),
-                          className:
-                            "flex items-center space-x-1 text-red-500 hover:scale-110 transition",
-                        },
-                        React.createElement("span", null, "❤️"),
-                        React.createElement(
-                          "span",
-                          { className: "text-sm font-medium" },
-                          post.likes || 0
-                        )
-                      )
-                    ),
-                    // COMMENTI
-                    React.createElement(
-                      "div",
-                      { className: "mt-3 border-t pt-3" },
-                      post.comments.map((c, idx) =>
-                        React.createElement(
-                          "div",
-                          { key: idx, className: "text-sm mb-1" },
-                          React.createElement(
-                            "span",
-                            { className: "font-medium" },
-                            c.username
-                          ),
-                          ": ",
-                          c.text
-                        )
-                      ),
-                      user &&
-                        React.createElement(
-                          "div",
-                          { className: "flex mt-2 gap-2" },
-                          React.createElement("input", {
-                            type: "text",
-                            placeholder: "Scrivi un commento...",
-                            value: commentInputs[post.id] || "",
-                            onChange: (e) =>
-                              setCommentInputs({
-                                ...commentInputs,
-                                [post.id]: e.target.value,
-                              }),
-                            className: "border p-2 flex-1 rounded",
-                          }),
-                          React.createElement(
-                            "button",
-                            {
-                              onClick: () =>
+          {user && (
+            <form onSubmit={addPost} className="bg-white p-4 rounded shadow mb-6 flex flex-col gap-3">
+              <textarea className="w-full border p-2 rounded" value={newPost.content} onChange={e => setNewPost({ ...newPost, content: e.target.value })} placeholder="Scrivi qualcosa..." required />
+              <input type="file" accept="image/*" multiple onChange={e => handleFileChange(e, "image")} />
+              <input type="file" accept="video/*" multiple onChange={e => handleFileChange(e, "video")} />
+              <input type="text" placeholder="Link prodotti separati da virgola" className="border p-2 rounded" value={newPost.productLinks.join(",")} onChange={e => {
+                const links = e.target.value.split(",");
+                setNewPost({ ...newPost, productLinks: links });
+                fetchLinkPreview(links[links.length - 1].trim());
+              }} />
+              {linkPreview && (
+                <div className="mt-2 p-3 border rounded bg-gray-50">
+                  <h3 className="font-semibold">{linkPreview.title}</h3>
+                  <p>{linkPreview.description}</p>
+                  <img src={linkPreview.image} alt={linkPreview.title} className="w-full h-auto mt-2 rounded" />
+                </div>
+              )}
+              <input type="text" placeholder="Tag separati da virgola" className="border p-2 rounded" value={newPost.tags} onChange={e => setNewPost({ ...newPost, tags: e.target.value })} />
+              <button className="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-7000
