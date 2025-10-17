@@ -10,7 +10,6 @@
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-storage-compat.js"></script>
 </head>
 <body class="bg-gray-50">
 <div id="root"></div>
@@ -18,7 +17,7 @@
 <script>
 const { useState, useEffect } = React;
 
-// Config Firebase
+// Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyBmbEztflh7PrcHKggM2-lzoMhzNkOup5o",
   authDomain: "thebikerzone-54094.firebaseapp.com",
@@ -30,16 +29,13 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
-const storage = firebase.storage();
 const provider = new firebase.auth.GoogleAuthProvider();
 
 function App() {
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState([]);
-  const [newPost, setNewPost] = useState({content:"", images:[], videos:[], productLinks:[], tags:""});
+  const [newPost, setNewPost] = useState({content:"", tags:""});
   const [loading, setLoading] = useState(true);
-  const [linkPreview, setLinkPreview] = useState({});
-  const [carouselIndex, setCarouselIndex] = useState({});
 
   useEffect(() => {
     const unsubAuth = auth.onAuthStateChanged(u => setUser(u));
@@ -56,56 +52,19 @@ function App() {
       }).catch(console.error);
   }
 
-  async function uploadFile(file, folder){
-    const ref = storage.ref().child(`${folder}/${Date.now()}_${file.name}`);
-    await ref.put(file);
-    return await ref.getDownloadURL();
-  }
-
-  async function addPost(e){
+  function addPost(e){
     e.preventDefault();
     if(!user) return alert("Accedi con Google per postare!");
-
-    const imagesUrls = [];
-    const videosUrls = [];
-    for(const img of newPost.images){ imagesUrls.push(await uploadFile(img,"images")); }
-    for(const vid of newPost.videos){ videosUrls.push(await uploadFile(vid,"videos")); }
-
-    await db.collection("posts").add({
+    db.collection("posts").add({
       content: newPost.content,
-      images: imagesUrls,
-      videos: videosUrls,
       username: user.displayName,
       likes:0,
-      created_at:new Date(),
-      productLinks: newPost.productLinks.filter(l=>l.trim()!==""),
-      tags: newPost.tags.split(",").map(t=>t.trim()).filter(Boolean)
-    });
-
-    setNewPost({content:"", images:[], videos:[], productLinks:[], tags:""});
-    setLinkPreview({});
-    loadPosts();
-  }
-
-  function handleFileChange(e,type){
-    const files = Array.from(e.target.files);
-    if(type==="image") setNewPost({...newPost, images:files});
-    if(type==="video") setNewPost({...newPost, videos:files});
-  }
-
-  async function fetchLinkPreview(url,i){
-    if(!url){ setLinkPreview({...linkPreview,[i]:null}); return; }
-    try{
-      const response = await fetch(`https://api.opengraph.io/api/1.1/site/${encodeURIComponent(url)}?app_id=YOUR_APP_ID`);
-      const data = await response.json();
-      if(data && data.hybridGraph){
-        setLinkPreview({...linkPreview,[i]:{
-          title: data.hybridGraph.title,
-          description: data.hybridGraph.description,
-          image: data.hybridGraph.image
-        }});
-      } else setLinkPreview({...linkPreview,[i]:null});
-    } catch(e){ setLinkPreview({...linkPreview,[i]:null}); }
+      tags: newPost.tags.split(",").map(t=>t.trim()).filter(Boolean),
+      created_at: new Date()
+    }).then(()=>{
+      setNewPost({content:"", tags:""});
+      loadPosts();
+    }).catch(console.error);
   }
 
   function addLike(postId){
@@ -119,46 +78,36 @@ function App() {
     }).then(loadPosts).catch(console.error);
   }
 
-  function prevCarousel(postId,length){
-    setCarouselIndex({...carouselIndex,[postId]:(carouselIndex[postId]||0)-1<0?length-1:(carouselIndex[postId]||0)-1});
-  }
-
-  function nextCarousel(postId,length){
-    setCarouselIndex({...carouselIndex,[postId]:(carouselIndex[postId]||0)+1>=length?0:(carouselIndex[postId]||0)+1});
-  }
-
   return React.createElement("div",{className:"max-w-3xl mx-auto py-6"},
     React.createElement("header",{className:"flex justify-between items-center mb-6"},
       React.createElement("h1",{className:"text-3xl font-bold text-orange-600"},"🏍️ TheBikerZone"),
-      user?
-      React.createElement("div",{className:"flex items-center gap-3"},
-        React.createElement("span",null,"👋 ",user.displayName),
-        React.createElement("button",{onClick:()=>auth.signOut(), className:"px-3 py-1 bg-gray-200 rounded hover:bg-gray-300"},"Logout")
-      ):
-      React.createElement("button",{onClick:()=>auth.signInWithPopup(provider), className:"px-3 py-1 bg-orange-600 text-white rounded hover:bg-orange-700"},"Accedi con Google")
+      user ?
+        React.createElement("div",{className:"flex items-center gap-3"},
+          React.createElement("span",null,"👋 ",user.displayName),
+          React.createElement("button",{onClick:()=>auth.signOut(), className:"px-3 py-1 bg-gray-200 rounded hover:bg-gray-300"},"Logout")
+        ) :
+        React.createElement("button",{onClick:()=>auth.signInWithPopup(provider), className:"px-3 py-1 bg-orange-600 text-white rounded hover:bg-orange-700"},"Accedi con Google")
     ),
 
     user && React.createElement("form",{onSubmit:addPost,className:"bg-white p-4 rounded shadow mb-6 flex flex-col gap-3"},
       React.createElement("textarea",{className:"w-full border p-2 rounded",value:newPost.content,onChange:e=>setNewPost({...newPost, content:e.target.value}),placeholder:"Scrivi qualcosa...", required:true}),
-      React.createElement("input",{type:"file", accept:"image/*", multiple:true, onChange:e=>handleFileChange(e,"image")}),
-      React.createElement("input",{type:"file", accept:"video/*", multiple:true, onChange:e=>handleFileChange(e,"video")}),
-      newPost.productLinks.map((link,i)=>React.createElement("div",{key:i,className:"flex flex-col gap-1"},
-        React.createElement("input",{type:"text", placeholder:"Link prodotto", className:"border p-2 rounded", value:newPost.productLinks[i], onChange:e=>{
-          const links=[...newPost.productLinks]; links[i]=e.target.value; setNewPost({...newPost, productLinks:links});
-          fetchLinkPreview(e.target.value,i);
-        }}),
-        linkPreview[i] && React.createElement("div",{className:"p-2 border rounded bg-gray-50"},
-          React.createElement("h3",{className:"font-semibold"},linkPreview[i].title),
-          React.createElement("p",{className:"text-sm"},linkPreview[i].description),
-          linkPreview[i].image && React.createElement("img",{src:linkPreview[i].image,className:"w-full rounded mt-1"})
-        )
-      )),
-      React.createElement("button",{type:"button", onClick:()=>setNewPost({...newPost, productLinks:[...newPost.productLinks,""]}), className:"bg-gray-200 px-3 py-1 rounded"},"Aggiungi link"),
       React.createElement("input",{type:"text", placeholder:"Tag separati da virgola", className:"border p-2 rounded", value:newPost.tags, onChange:e=>setNewPost({...newPost, tags:e.target.value})}),
       React.createElement("button",{className:"bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700"},"Pubblica")
     ),
 
     loading?React.createElement("p",{className:"text-center"},"⏳ Caricamento...") :
-    posts.map(post=>{
-      const media = (post.images||[]).concat(post.videos||[]);
-      const idx = carouselIndex[post.id]||0;
+    posts.map(post=>React.createElement("div",{key:post.id,className:"bg-white p-4 rounded shadow mb-6"},
+      React.createElement("p",{className:"text-gray-800"},post.content),
+      post.tags && React.createElement("div",{className:"mt-2 flex gap-2"}, post.tags.map((tag,i)=>React.createElement("span",{key:i,className:"bg-gray-200 px-2 py-1 rounded text-sm"},"#",tag))),
+      React.createElement("div",{className:"flex justify-between text-sm text-gray-500 mt-2"},
+        React.createElement("span",null,"✍️ ",post.username),
+        React.createElement("button",{onClick:()=>addLike(post.id), className:"text-red-500 hover:scale-110 transition"},"❤️ ",post.likes||0)
+      )
+    ))
+  );
+}
+
+ReactDOM.render(React.createElement(App), document.getElementById("root"));
+</script>
+</body>
+</html>
