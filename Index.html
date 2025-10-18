@@ -109,9 +109,7 @@
 
       async function handleLogin() {
         const provider = new firebase.auth.GoogleAuthProvider();
-        try {
-          await auth.signInWithPopup(provider);
-        } catch(err) { console.error(err); alert("Errore login"); }
+        try { await auth.signInWithPopup(provider); } catch(err){ console.error(err); alert("Errore login"); }
       }
 
       function handleLogout() {
