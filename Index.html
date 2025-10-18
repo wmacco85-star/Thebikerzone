@@ -1,164 +1,414 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>TheBikerZone | Ultimate Motorcycle Community</title>
-    
+
     <!-- Google AdSense -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9609537441494705" crossorigin="anonymous"></script>
-    
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Firebase -->
+
+    <!-- Firebase (compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
-</head>
-<body>
-    <div id="root"></div>
-    
-    <script>
-        const firebaseConfig = {
-          apiKey: "AIzaSyBmbEztflh7PrcHKggM2-lzoMhzNkOup5o",
-          authDomain: "thebikerzone-54094.firebaseapp.com",
-          projectId: "thebikerzone-54094",
-          storageBucket: "thebikerzone-54094.firebasestorage.app",
-          messagingSenderId: "654294837831",
-          appId: "1:654294837831:web:1c73e7707de9a2fd4a5f62"
-        };
-        
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
-        const storage = firebase.storage();
-        const MAX_MB = 200;
 
-        function App() {
-            const [user, setUser] = React.useState(null);
-            const [posts, setPosts] = React.useState([]);
-            const [loading, setLoading] = React.useState(true);
-            const [newPost, setNewPost] = React.useState({ title: '', content: '', post_type: 'tip', location: '', tags: '', file: null, links: '' });
-            const [posting, setPosting] = React.useState(false);
-            const [showAuthDialog, setShowAuthDialog] = React.useState(false);
-
-            React.useEffect(() => { loadPosts(); }, []);
-
-            async function loadPosts() {
-                setLoading(true);
-                const snapshot = await db.collection('posts').orderBy('created_at','desc').get();
-                setPosts(snapshot.docs.map(d=>({id:d.id,...d.data(), created_at:d.data().created_at?.toDate() || new Date()})));
-                setLoading(false);
-            }
-
-            async function uploadFile(file) {
-                if(!file) return null;
-                const sizeMB = file.size / (1024*1024);
-                if(sizeMB>MAX_MB){ alert(`❌ File troppo grande (${sizeMB.toFixed(1)} MB). Massimo: ${MAX_MB} MB`); return null; }
-                const ref = storage.ref('uploads/'+Date.now()+'_'+file.name);
-                await ref.put(file);
-                return await ref.getDownloadURL();
-            }
-
-            async function handleSubmitPost(e){
-                e.preventDefault();
-                if(!user){ setShowAuthDialog(true); return; }
-                setPosting(true);
-                try{
-                    const fileUrl = await uploadFile(newPost.file);
-                    const linksArr = newPost.links.split(',').map(s=>s.trim()).filter(Boolean);
-                    await db.collection('posts').add({
-                        title:newPost.title,
-                        content:newPost.content,
-                        username:user.username,
-                        user_id:user.uid || user.username,
-                        tags:newPost.tags.split(',').map(t=>t.trim()).filter(Boolean),
-                        links:linksArr,
-                        fileUrl,
-                        post_type:newPost.post_type,
-                        likes:0,
-                        views:0,
-                        created_at:firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    setNewPost({ title:'', content:'', post_type:'tip', location:'', tags:'', file:null, links:'' });
-                    loadPosts();
-                    alert('🎉 Post condiviso!');
-                }catch(e){ console.error(e); alert('❌ Errore nel pubblicare.'); }
-                setPosting(false);
-            }
-
-            const handleQuickAuth = () => {
-                const username = prompt('Inserisci username:') || 'BikerUser'+Math.floor(Math.random()*1000);
-                const userData = { uid:'user_'+Date.now(), username, email:username.toLowerCase()+'@thebikerzone.com', membership_tier:username.toLowerCase()==='wallydk85'?'owner':'free' };
-                setUser(userData);
-                setShowAuthDialog(false);
-                db.collection('users').doc(userData.uid).set(userData).catch(console.error);
-            };
-
-            return React.createElement('div',{className:'min-h-screen bg-gray-50'},
-                // Header
-                React.createElement('header',{className:'sticky top-0 z-50 border-b bg-white shadow-sm'},
-                    React.createElement('div',{className:'container mx-auto px-4 h-16 flex items-center justify-between'},
-                        React.createElement('div',{className:'flex items-center space-x-2'},
-                            React.createElement('span',{className:'text-2xl'},'🏍️'),
-                            React.createElement('h1',{className:'text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent'},'TheBikerZone')
-                        ),
-                        React.createElement('div',null,
-                            user ? React.createElement('div',null,
-                                React.createElement('span',null,'👋 '+user.username),
-                                React.createElement('button',{onClick:()=>setUser(null)},'Logout')
-                            )
-                            : React.createElement('button',{onClick:()=>setShowAuthDialog(true)},'🚀 Join Community')
-                        )
-                    )
-                ),
-
-                // Form Post
-                user && React.createElement('form',{onSubmit:handleSubmitPost,className:'container mx-auto px-4 py-6 bg-white rounded shadow mb-6'},
-                    React.createElement('input',{type:'text',placeholder:'Titolo',className:'w-full p-3 border rounded mb-3',value:newPost.title,onChange:e=>setNewPost({...newPost,title:e.target.value}),required:true}),
-                    React.createElement('textarea',{placeholder:'Contenuto',className:'w-full p-3 border rounded mb-3',rows:4,value:newPost.content,onChange:e=>setNewPost({...newPost,content:e.target.value}),required:true}),
-                    React.createElement('input',{type:'text',placeholder:'Tags (comma separated)',className:'w-full p-3 border rounded mb-3',value:newPost.tags,onChange:e=>setNewPost({...newPost,tags:e.target.value})}),
-                    React.createElement('input',{type:'text',placeholder:'Links (comma separated)',className:'w-full p-3 border rounded mb-3',value:newPost.links,onChange:e=>setNewPost({...newPost,links:e.target.value})}),
-                    React.createElement('input',{type:'file',accept:'image/*,video/*',className:'w-full mb-3',onChange:e=>setNewPost({...newPost,file:e.target.files[0]})}),
-                    React.createElement('button',{type:'submit',className:'bg-orange-600 text-white px-6 py-3 rounded hover:bg-orange-700',disabled:posting},posting?'⏳ Pubblicazione...':'🚀 Pubblica')
-                ),
-
-                // Posts
-                React.createElement('div',{className:'container mx-auto px-4'},
-                    loading ? React.createElement('p',{className:'text-center text-gray-500'},'🔄 Loading posts...') :
-                    posts.map(post=>React.createElement('div',{key:post.id,className:'bg-white p-4 rounded shadow mb-4'},
-                        React.createElement('div',{className:'flex items-center mb-2'},
-                            React.createElement('span',{className:'font-semibold mr-2'},post.username),
-                            React.createElement('span',{className:'text-gray-500 text-sm'},post.user_id)
-                        ),
-                        React.createElement('h3',{className:'font-bold mb-2'},post.title),
-                        React.createElement('p',{className:'mb-2'},post.content),
-                        post.fileUrl && (post.fileUrl.match(/\.(mp4|mov|avi|webm)$/i)
-                            ? React.createElement('video',{controls:true,src:post.fileUrl,className:'w-full mb-2'})
-                            : React.createElement('img',{src:post.fileUrl,className:'w-full mb-2'})
-                        ),
-                        post.links && post.links.length>0 && React.createElement('div',{className:'mb-2'},post.links.map((l,i)=>React.createElement('a',{key:i,href:l,target:'_blank',className:'text-blue-600 underline mr-2'},l))),
-                        post.tags && post.tags.length>0 && React.createElement('div',{className:'text-sm text-gray-500'},'Tags: '+post.tags.join(', '))
-                    ))
-                ),
-
-                // Auth Dialog
-                showAuthDialog && React.createElement('div',{className:'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'},
-                    React.createElement('div',{className:'bg-white p-6 rounded-lg max-w-sm w-full'},
-                        React.createElement('button',{className:'w-full bg-orange-600 text-white py-3 rounded-lg mb-3',onClick:handleQuickAuth},'🚀 Join Community'),
-                        React.createElement('button',{className:'w-full text-gray-500 py-2',onClick:()=>setShowAuthDialog(false)},'Maybe later')
-                    )
-                )
-            );
-        }
-
-        ReactDOM.render(React.createElement(App), document.getElementById('root'));
-    </script>
-
-    <!-- React -->
+    <!-- React UMD (load before app script) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <style>
+      /* small helper */
+      .media-max { max-height: 420px; width: 100%; object-fit: cover; border-radius: 0.5rem; }
+    </style>
+</head>
+<body class="bg-gray-50">
+  <div id="root"></div>
+
+  <script>
+  (function(){
+    const { useState, useEffect } = React;
+
+    // ---------------- FIREBASE CONFIG ----------------
+    const firebaseConfig = {
+      apiKey: "AIzaSyBmbEztflh7PrcHKggM2-lzoMhzNkOup5o",
+      authDomain: "thebikerzone-54094.firebaseapp.com",
+      projectId: "thebikerzone-54094",
+      storageBucket: "thebikerzone-54094.firebasestorage.app",
+      messagingSenderId: "654294837831",
+      appId: "1:654294837831:web:1c73e7707de9a2fd4a5f62"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+    const storage = firebase.storage();
+
+    // Max MB per file
+    const MAX_MB = 200;
+
+    // Helper: format date
+    function formatDateField(d) {
+      if (!d) return '';
+      if (d.toDate) return d.toDate().toLocaleString();
+      if (d instanceof Date) return d.toLocaleString();
+      return String(d);
+    }
+
+    // -------------- APPLICATION ----------------
+    function App() {
+      // user state
+      const [user, setUser] = useState(null);
+
+      // posts
+      const [posts, setPosts] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      // form state
+      const [newPost, setNewPost] = useState({
+        title: '',
+        content: '',
+        post_type: 'tip',
+        location: '',
+        tags: '',
+        productLinksInput: '',
+        imagesFiles: [],
+        videosFiles: []
+      });
+
+      const [posting, setPosting] = useState(false);
+      const [activeTab, setActiveTab] = useState('all');
+      const [carouselIdx, setCarouselIdx] = useState({}); // per-post carousel index
+
+      useEffect(() => {
+        const unsubAuth = auth.onAuthStateChanged(u => {
+          if (u) {
+            setUser({
+              uid: u.uid,
+              displayName: u.displayName || u.email.split('@')[0],
+              email: u.email,
+              avatar: u.photoURL || 'https://i.pravatar.cc/100'
+            });
+          } else {
+            setUser(null);
+          }
+        });
+        loadPosts();
+        return () => unsubAuth();
+      }, [activeTab]);
+
+      // load posts from Firestore
+      async function loadPosts(){
+        setLoading(true);
+        try {
+          let query = db.collection('posts').orderBy('created_at','desc');
+          if (activeTab !== 'all') {
+            query = query.where('post_type', '==', activeTab).orderBy('created_at','desc');
+          }
+          const snap = await query.get();
+          const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setPosts(data);
+        } catch (e) {
+          console.error('loadPosts error', e);
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      // upload multiple files (images or videos)
+      async function uploadFiles(files, folder) {
+        const urls = [];
+        for (const f of files) {
+          if (!f) continue;
+          const sizeMB = f.size / (1024*1024);
+          if (sizeMB > MAX_MB) {
+            alert(`❌ File "${f.name}" troppo grande (${sizeMB.toFixed(1)} MB). Massimo ${MAX_MB} MB. File ignorato.`);
+            continue;
+          }
+          const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2,9)}_${f.name}`;
+          const ref = storage.ref().child(path);
+          await ref.put(f);
+          const url = await ref.getDownloadURL();
+          urls.push(url);
+        }
+        return urls;
+      }
+
+      // submit post
+      async function handleSubmit(e){
+        e.preventDefault();
+        if (!user) {
+          alert('Accedi con Google per postare.');
+          return;
+        }
+        setPosting(true);
+        try {
+          const images = await uploadFiles(newPost.imagesFiles || [], 'images');
+          const videos = await uploadFiles(newPost.videosFiles || [], 'videos');
+          const productLinks = newPost.productLinksInput
+            ? newPost.productLinksInput.split(',').map(s => s.trim()).filter(Boolean)
+            : [];
+          const doc = {
+            title: newPost.title,
+            content: newPost.content,
+            post_type: newPost.post_type || 'tip',
+            location: newPost.location || '',
+            tags: newPost.tags ? newPost.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+            productLinks,
+            images,
+            videos,
+            username: user.displayName || user.email,
+            email: user.email,
+            avatar: user.avatar,
+            likes: 0,
+            views: 0,
+            created_at: firebase.firestore.FieldValue.serverTimestamp()
+          };
+          await db.collection('posts').add(doc);
+          setNewPost({ title:'', content:'', post_type:'tip', location:'', tags:'', productLinksInput:'', imagesFiles:[], videosFiles:[] });
+          await loadPosts();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (err) {
+          console.error('handleSubmit error', err);
+          alert('Errore nella pubblicazione. Controlla la console.');
+        } finally {
+          setPosting(false);
+        }
+      }
+
+      // quick auth (local simulated user)
+      function handleQuickAuth(){
+        const username = prompt('Enter your username:') || 'BikerUser' + Math.floor(Math.random()*1000);
+        const userData = {
+          uid: 'user_' + Date.now(),
+          displayName: username,
+          email: username.toLowerCase() + '@thebikerzone.com',
+          avatar: 'https://i.pravatar.cc/100'
+        };
+        setUser(userData);
+        db.collection('users').doc(userData.uid).set(userData).catch(console.error);
+      }
+
+      // google auth
+      async function handleGoogleAuth(){
+        const provider = new firebase.auth.GoogleAuthProvider();
+        try {
+          await auth.signInWithPopup(provider);
+        } catch (e) {
+          console.error('Google auth error', e);
+          alert('Errore login Google');
+        }
+      }
+
+      // like post
+      async function handleLike(postId){
+        if (!user) { alert('Accedi per mettere Mi Piace'); return; }
+        try {
+          const ref = db.collection('posts').doc(postId);
+          await db.runTransaction(async tx => {
+            const doc = await tx.get(ref);
+            if (!doc.exists) return;
+            tx.update(ref, { likes: (doc.data().likes || 0) + 1 });
+          });
+          loadPosts();
+        } catch (e) {
+          console.error('like error', e);
+        }
+      }
+
+      // carousel helpers
+      function prevCarousel(postId, length){
+        const idx = carouselIdx[postId] || 0;
+        const next = (idx - 1 + length) % length;
+        setCarouselIdx(Object.assign({}, carouselIdx, { [postId]: next }));
+      }
+      function nextCarousel(postId, length){
+        const idx = carouselIdx[postId] || 0;
+        const next = (idx + 1) % length;
+        setCarouselIdx(Object.assign({}, carouselIdx, { [postId]: next }));
+      }
+
+      // preview selected files
+      function renderFilePreviews(files, isVideo){
+        if (!files || files.length === 0) return null;
+        const nodes = files.map((f,i) => {
+          const src = URL.createObjectURL(f);
+          return isVideo
+            ? React.createElement('video', { key:i, src, controls:true, className:'h-28 rounded-md' })
+            : React.createElement('img', { key:i, src, className:'h-28 rounded-md object-cover' });
+        });
+        return React.createElement('div', { className:'flex gap-2 overflow-x-auto mt-2' }, nodes);
+      }
+
+      // UI
+      const el = React.createElement;
+
+      return el('div', { className:'min-h-screen' },
+        // Header
+        el('header', { className:'bg-white shadow sticky top-0 z-40' },
+          el('div', { className:'max-w-6xl mx-auto px-4 py-3 flex items-center justify-between' },
+            el('div', null,
+              el('h1', { className:'text-2xl font-bold text-orange-600' }, '🏍️ TheBikerZone')
+            ),
+            el('div', { className:'flex items-center gap-3' },
+              el('nav', { className:'hidden md:flex items-center gap-4 text-gray-600' },
+                el('a', { href:'#all', onClick:()=>setActiveTab('all') }, 'All Posts'),
+                el('a', { href:'#tip', onClick:()=>setActiveTab('tip') }, 'Tips'),
+                el('a', { href:'#road', onClick:()=>setActiveTab('road') }, 'Roads'),
+                el('a', { href:'#tech', onClick:()=>setActiveTab('tech') }, 'Tech')
+              ),
+              user ? el('div', { className:'flex items-center gap-3' },
+                el('img', { src:user.avatar, className:'w-10 h-10 rounded-full' }),
+                el('span', { className:'text-sm' }, user.displayName),
+                el('button', { onClick: ()=> auth.signOut(), className:'px-3 py-1 border rounded' }, 'Logout')
+              ) : el('div', { className:'flex items-center gap-2' },
+                el('button', { onClick: handleGoogleAuth, className:'px-3 py-1 bg-orange-600 text-white rounded' }, 'Login Google'),
+                el('button', { onClick: handleQuickAuth, className:'px-3 py-1 border rounded' }, 'Quick Auth')
+              )
+            )
+          )
+        ),
+
+        // Hero
+        el('section', { className:'relative h-64 flex items-center justify-center overflow-hidden bg-cover bg-center', style:{ backgroundImage: "linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)), url('https://images.unsplash.com/photo-1581422228845-cbd91de24e2d')"} },
+          el('div', { className:'relative z-10 text-center text-white px-4 max-w-4xl' },
+            el('h2', { className:'text-3xl md:text-5xl font-bold mb-2' }, 'Ride. Share. Explore.'),
+            el('p', { className:'opacity-90' }, 'The ultimate community for motorcycle enthusiasts worldwide.')
+          )
+        ),
+
+        // Main
+        el('main', { className:'max-w-6xl mx-auto px-4 py-6' },
+
+          // Post form (if logged)
+          user && el('section', { className:'bg-white p-6 rounded shadow mb-6' },
+            el('h3', { className:'font-semibold mb-3' }, 'Share Your Experience'),
+            el('form', { onSubmit: handleSubmit },
+              // title
+              el('input', { type:'text', placeholder:'Title (optional)', className:'w-full p-3 border rounded mb-3', value:newPost.title, onChange:e=>setNewPost({...newPost, title:e.target.value}) }),
+              // content
+              el('textarea', { placeholder:'Tell us about your ride, tips, tech...', className:'w-full p-3 border rounded mb-3', rows:4, value:newPost.content, onChange:e=>setNewPost({...newPost, content:e.target.value}) }),
+              // small row
+              el('div', { className:'grid grid-cols-1 md:grid-cols-3 gap-3 mb-3' },
+                el('select', { value:newPost.post_type, onChange:e=>setNewPost({...newPost, post_type:e.target.value}), className:'p-2 border rounded' },
+                  el('option', { value:'tip' }, '⚡ Tip'),
+                  el('option', { value:'road' }, '🗺️ Road'),
+                  el('option', { value:'tech' }, '🔧 Tech')
+                ),
+                el('input', { type:'text', placeholder:'Location (optional)', className:'p-2 border rounded', value:newPost.location, onChange:e=>setNewPost({...newPost, location:e.target.value}) }),
+                el('input', { type:'text', placeholder:'Tags (comma separated)', className:'p-2 border rounded', value:newPost.tags, onChange:e=>setNewPost({...newPost, tags:e.target.value}) })
+              ),
+              // product links
+              el('input', { type:'text', placeholder:'Product links (comma separated)', className:'w-full p-2 border rounded mb-3', value:newPost.productLinksInput, onChange:e=>setNewPost({...newPost, productLinksInput:e.target.value}) }),
+              // images upload
+              el('div', { className:'mb-3' },
+                el('label', { className:'block text-sm text-gray-600 mb-1' }, `Images (max ${MAX_MB}MB each)`),
+                el('input', { type:'file', accept:'image/*', multiple:true, onChange:e=>setNewPost({...newPost, imagesFiles:Array.from(e.target.files)}) })
+              ),
+              renderFilePreviews(newPost.imagesFiles, false),
+              // videos upload
+              el('div', { className:'mb-3 mt-3' },
+                el('label', { className:'block text-sm text-gray-600 mb-1' }, `Videos (max ${MAX_MB}MB each)`),
+                el('input', { type:'file', accept:'video/*', multiple:true, onChange:e=>setNewPost({...newPost, videosFiles:Array.from(e.target.files)}) })
+              ),
+              renderFilePreviews(newPost.videosFiles, true),
+              // submit
+              el('div', { className:'mt-4 flex items-center gap-2' },
+                el('button', { type:'submit', className:'bg-orange-600 text-white px-4 py-2 rounded', disabled:posting }, posting ? '⏳ Posting...' : '🚀 Share Post' ),
+                el('button', { type:'button', className:'px-3 py-2 border rounded', onClick: ()=> setNewPost({ title:'', content:'', post_type:'tip', location:'', tags:'', productLinksInput:'', imagesFiles:[], videosFiles:[] }) }, 'Reset')
+              )
+            )
+          ),
+
+          // Tabs
+          el('div', { className:'mb-6 flex gap-2' },
+            ['all','tip','road','tech'].map(tab => el('button', {
+              key: tab,
+              onClick: ()=> setActiveTab(tab),
+              className: `px-3 py-2 rounded ${activeTab===tab ? 'bg-orange-600 text-white' : 'bg-gray-100'}`
+            }, tab === 'all' ? 'All Posts' : tab === 'tip' ? '⚡ Tips' : tab === 'road' ? '🗺️ Roads' : '🔧 Tech'))
+          ),
+
+          // Posts grid / list
+          loading ? el('p', { className:'text-center py-8' }, '🔄 Loading posts...') :
+          posts.length === 0 ? el('div', { className:'text-center py-8 bg-white rounded shadow' },
+            el('div', { className:'text-6xl mb-4' }, '🏍️'),
+            el('h3', { className:'text-xl font-semibold mb-2' }, 'No posts yet!'),
+            el('p', { className:'text-gray-600' }, 'Be the first to share your motorcycle experience.')
+          ) :
+          el('div', { className:'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' },
+            posts.map((post, index) => {
+              const media = (Array.isArray(post.images) ? post.images : []).concat(Array.isArray(post.videos) ? post.videos : []);
+              const mediaCount = media.length;
+              const currentIdx = carouselIdx[post.id] || 0;
+              return el(React.Fragment, { key: post.id },
+                el('div', { className:'bg-white rounded-lg shadow p-4' },
+                  // header
+                  el('div', { className:'flex items-center justify-between mb-3' },
+                    el('div', { className:'flex items-center gap-3' },
+                      el('img', { src: post.avatar || 'https://i.pravatar.cc/100', className:'w-10 h-10 rounded-full' }),
+                      el('div', null, el('div', { className:'font-medium' }, post.username || 'Anonimo'), el('div', { className:'text-xs text-gray-500' }, formatDateField(post.created_at)))
+                    ),
+                    el('span', { className:`px-3 py-1 rounded-full text-xs font-medium ${post.post_type==='tip'?'bg-blue-100 text-blue-700':post.post_type==='road'?'bg-green-100 text-green-700':'bg-purple-100 text-purple-700'}` }, post.post_type==='tip' ? '⚡ Tip' : post.post_type==='road' ? '🗺️ Road' : '🔧 Tech')
+                  ),
+                  // title & content
+                  post.title ? el('h3', { className:'font-bold text-lg mb-2' }, post.title) : null,
+                  el('p', { className:'text-gray-700 mb-3' }, post.content),
+                  post.location ? el('div', { className:'text-sm text-gray-500 mb-2' }, '📍 ' + post.location) : null,
+                  Array.isArray(post.tags) && post.tags.length > 0 ? el('div', { className:'flex gap-2 flex-wrap mb-3' }, post.tags.map((t,i) => el('span', { key:i, className:'px-2 py-1 bg-gray-100 rounded text-sm' }, '#'+t))) : null,
+                  // product links simple boxes
+                  Array.isArray(post.productLinks) && post.productLinks.length>0 ? el('div', { className:'flex gap-2 flex-wrap mb-3' }, post.productLinks.map((lnk,i) => el('a', { key:i, href:lnk, target:'_blank', rel:'noreferrer', className:'px-3 py-1 bg-blue-50 text-blue-600 rounded text-sm' }, '🔗 Product '+(i+1)))) : null,
+                  // media carousel
+                  mediaCount>0 ? el('div', { className:'relative mb-3' },
+                    media.map((murl,i) => {
+                      if (i !== currentIdx) return null;
+                      const isImage = i < (Array.isArray(post.images) ? post.images.length : 0);
+                      return isImage ? el('img', { key:i, src:murl, className:'media-max' }) : el('video', { key:i, src:murl, controls:true, className:'media-max' });
+                    }),
+                    mediaCount>1 ? el('div', { className:'flex items-center justify-between mt-2' },
+                      el('button', { onClick: ()=> prevCarousel(post.id, mediaCount), className:'px-3 py-1 bg-black bg-opacity-20 text-white rounded' }, '‹'),
+                      el('div', { className:'text-sm text-gray-500' }, `${(currentIdx+1)}/${mediaCount}`),
+                      el('button', { onClick: ()=> nextCarousel(post.id, mediaCount), className:'px-3 py-1 bg-black bg-opacity-20 text-white rounded' }, '›')
+                    ) : null
+                  ) : null,
+                  // actions
+                  el('div', { className:'flex items-center justify-between pt-3 border-t border-gray-100' },
+                    el('div', { className:'flex items-center gap-4' },
+                      el('button', { onClick: ()=> handleLike(post.id), className:'flex items-center gap-2 text-gray-500 hover:text-red-500' }, '❤️', el('span', { className:'text-sm' }, post.likes || 0)),
+                      el('div', { className:'text-sm text-gray-500 flex items-center gap-1' }, '👁️', el('span', null, post.views || 0))
+                    ),
+                    (user && (post.user_id === user.uid)) ? el('span', { className:'text-xs text-gray-400' }, 'Your post') : null
+                  )
+                ),
+                // in-feed ad after every second post
+                ((index + 1) % 2 === 0 && index < posts.length - 1) ? el('div', { className:'col-span-full bg-gray-100 border-2 border-dashed border-gray-300 p-4 text-center text-gray-500 rounded' },
+                  el('ins', { className:'adsbygoogle', style:{display:'block', minHeight:'120px'}, 'data-ad-client':'ca-pub-9609537441494705', 'data-ad-slot':'auto', 'data-ad-format':'fluid' }),
+                  el('p', { className:'text-sm mt-2' }, 'In-Feed Ad')
+                ) : null
+              );
+            })
+          )
+        ),
+
+        // Footer
+        el('footer', { className:'max-w-6xl mx-auto px-4 py-6 text-center text-sm text-gray-500' },
+          '© ', new Date().getFullYear(), ' TheBikerZone'
+        )
+      );
+    }
+
+    // render
+    try {
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(React.createElement(App));
+    } catch (e) {
+      ReactDOM.render(React.createElement(App), document.getElementById('root'));
+    }
+  })();
+  </script>
 </body>
 </html>
