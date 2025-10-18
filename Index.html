@@ -44,7 +44,6 @@
       const [loading, setLoading] = React.useState(true);
       const [newPost, setNewPost] = React.useState({ title:'', content:'', file:null, productLinksInput:'', post_type:'tip' });
       const [posting, setPosting] = React.useState(false);
-      const [searchQuery, setSearchQuery] = React.useState('');
 
       React.useEffect(() => {
         const unsub = auth.onAuthStateChanged(u => {
@@ -110,24 +109,17 @@
 
       async function handleLogin() {
         const provider = new firebase.auth.GoogleAuthProvider();
-        try { await auth.signInWithPopup(provider); } catch(err){ console.error(err); alert("Errore login"); }
+        try {
+          await auth.signInWithPopup(provider);
+        } catch(err) { console.error(err); alert("Errore login"); }
       }
 
       function handleLogout() {
         auth.signOut();
       }
 
-      // Filtra i post in base alla ricerca
-      const filteredPosts = posts.filter(post => {
-        const q = searchQuery.toLowerCase();
-        return post.title.toLowerCase().includes(q)
-          || post.content.toLowerCase().includes(q)
-          || (post.productLinks && post.productLinks.some(link=>link.toLowerCase().includes(q)));
-      });
-
       return React.createElement('div',{className:'max-w-3xl mx-auto p-4'},
-        // Header
-        React.createElement('div',{className:'flex justify-between items-center mb-4'},
+        React.createElement('div',{className:'flex justify-between items-center mb-6'},
           React.createElement('h1',{className:'text-3xl font-bold'},'🏍️ TheBikerZone'),
           user 
             ? React.createElement('div',{className:'flex items-center space-x-3'},
@@ -138,8 +130,7 @@
             : React.createElement('button',{className:'bg-green-600 text-white px-4 py-2 rounded',onClick:handleLogin},'Login con Google')
         ),
 
-        // Form nuovo post
-        user && React.createElement('form',{onSubmit:handleSubmit,className:'bg-white p-6 rounded-lg shadow mb-6'},
+        user && React.createElement('form',{onSubmit:handleSubmit,className:'bg-white p-6 rounded-lg shadow mb-8'},
           React.createElement('input',{type:'text',placeholder:'Titolo del post',className:'w-full p-3 border rounded mb-3',value:newPost.title,onChange:e=>setNewPost({...newPost,title:e.target.value})}),
           React.createElement('textarea',{placeholder:'Scrivi qui...',className:'w-full p-3 border rounded mb-3',rows:4,value:newPost.content,onChange:e=>setNewPost({...newPost,content:e.target.value})}),
           React.createElement('input',{type:'text',placeholder:'Link prodotto (virgole)',className:'w-full border rounded px-3 py-2 mb-3',value:newPost.productLinksInput,onChange:e=>setNewPost({...newPost,productLinksInput:e.target.value})}),
@@ -147,19 +138,8 @@
           React.createElement('button',{type:'submit',className:'bg-orange-600 text-white px-6 py-3 rounded hover:bg-orange-700',disabled:posting},posting?'⏳ Pubblicazione...':'🚀 Pubblica')
         ),
 
-        // Barra di ricerca
-        React.createElement('input',{
-          type:'text',
-          placeholder:'🔍 Cerca post...',
-          className:'w-full p-3 border rounded mb-6',
-          value:searchQuery,
-          onChange:e=>setSearchQuery(e.target.value)
-        }),
-
-        // Lista post
         loading ? React.createElement('p',{className:'text-center text-gray-500'},'Caricamento post...') :
-        filteredPosts.length === 0 ? React.createElement('p',{className:'text-center text-gray-500'},'Nessun post trovato.') :
-        filteredPosts.map(post =>
+        posts.map(post =>
           React.createElement('div',{key:post.id,className:'bg-white p-6 rounded-lg shadow mb-4'},
             React.createElement('div',{className:'flex items-center mb-2'},
               React.createElement('img',{src:post.avatar,className:'w-10 h-10 rounded-full mr-2'}),
