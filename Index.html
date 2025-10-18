@@ -1,456 +1,188 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>TheBikerZone | Ultimate Motorcycle Community</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TheBikerZone | Ultimate Motorcycle Community</title>
 
-    <!-- Google AdSense -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9609537441494705" crossorigin="anonymous"></script>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 
-    <!-- Firebase (compat) - carico QUI per essere disponibile prima dello script app -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
-
-    <!-- React (UMD) - carico QUI per essere disponibile prima dello script app -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- React -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 </head>
-<body>
-    <div id="root"></div>
+<body class="bg-gray-50">
+  <div id="root"></div>
 
-    <script>
-        // ----- FIREBASE CONFIG (INTEGRATA) -----
-        const firebaseConfig = {
-          apiKey: "AIzaSyBmbEztflh7PrcHKggM2-lzoMhzNkOup5o",
-          authDomain: "thebikerzone-54094.firebaseapp.com",
-          projectId: "thebikerzone-54094",
-          storageBucket: "thebikerzone-54094.firebasestorage.app",
-          messagingSenderId: "654294837831",
-          appId: "1:654294837831:web:1c73e7707de9a2fd4a5f62"
-        };
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBmbEztflh7PrcHKggM2-lzoMhzNkOup5o",
+      authDomain: "thebikerzone-54094.firebaseapp.com",
+      projectId: "thebikerzone-54094",
+      storageBucket: "thebikerzone-54094.firebasestorage.app",
+      messagingSenderId: "654294837831",
+      appId: "1:654294837831:web:1c73e7707de9a2fd4a5f62"
+    };
+    firebase.initializeApp(firebaseConfig);
 
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+    const storage = firebase.storage();
 
-        // Main App (usa React.createElement come nel tuo file originale)
-        function App() {
-            const [user, setUser] = React.useState(null);
-            const [posts, setPosts] = React.useState([]);
-            const [loading, setLoading] = React.useState(true);
-            const [showAuthDialog, setShowAuthDialog] = React.useState(false);
-            const [activeTab, setActiveTab] = React.useState('all');
-            const [posting, setPosting] = React.useState(false);
-            const [newPost, setNewPost] = React.useState({
-                title: '',
-                content: '',
-                post_type: 'tip',
-                location: '',
-                tags: ''
+    const MAX_MB = 200;
+
+    function App() {
+      const [user, setUser] = React.useState(null);
+      const [posts, setPosts] = React.useState([]);
+      const [loading, setLoading] = React.useState(true);
+      const [newPost, setNewPost] = React.useState({ title:'', content:'', file:null, productLinksInput:'', post_type:'tip' });
+      const [posting, setPosting] = React.useState(false);
+      const [searchQuery, setSearchQuery] = React.useState('');
+
+      React.useEffect(() => {
+        const unsub = auth.onAuthStateChanged(u => {
+          if(u){
+            setUser({
+              uid: u.uid,
+              displayName: u.displayName || u.email.split('@')[0],
+              email: u.email,
+              avatar: u.photoURL || 'https://i.pravatar.cc/100'
             });
+          } else {
+            setUser(null);
+          }
+        });
+        loadPosts();
+        return () => unsub();
+      }, []);
 
-            // Load posts on startup / when tab changes
-            React.useEffect(() => {
-                loadPosts();
-            }, [activeTab]);
+      async function loadPosts() {
+        setLoading(true);
+        const snapshot = await db.collection("posts").orderBy("created_at","desc").get();
+        setPosts(snapshot.docs.map(d=>({id:d.id,...d.data()})));
+        setLoading(false);
+      }
 
-            const loadPosts = async () => {
-                try {
-                    setLoading(true);
-                    let query = db.collection('posts').orderBy('created_at', 'desc');
+      async function uploadFile(file) {
+        if (!file) return null;
+        const sizeMB = file.size / (1024*1024);
+        if (sizeMB > MAX_MB) { alert(`❌ File troppo grande (${sizeMB.toFixed(1)} MB). Massimo: ${MAX_MB} MB`); return null; }
+        const ref = storage.ref().child('uploads/' + Date.now() + '_' + file.name);
+        await ref.put(file);
+        return await ref.getDownloadURL();
+      }
 
-                    if (activeTab !== 'all') {
-                        query = query.where('post_type', '==', activeTab).orderBy('created_at', 'desc');
-                    }
+      async function handleSubmit(e) {
+        e.preventDefault();
+        if (!user) return alert("Accedi per pubblicare!");
 
-                    const snapshot = await query.get();
-                    const postsData = snapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...doc.data(),
-                        // stored as timestamp or Date
-                        created_at: doc.data().created_at && doc.data().created_at.toDate ? doc.data().created_at.toDate() : (doc.data().created_at || new Date())
-                    }));
-
-                    setPosts(postsData);
-                } catch (error) {
-                    console.error('Error loading posts:', error);
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            const handleSubmitPost = async (e) => {
-                e.preventDefault();
-                if (!user) {
-                    setShowAuthDialog(true);
-                    return;
-                }
-
-                setPosting(true);
-                try {
-                    const postData = {
-                        ...newPost,
-                        username: user.username || user.displayName || 'Anonymous',
-                        user_id: user.uid || user.username,
-                        tags: newPost.tags ? newPost.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [],
-                        likes: 0,
-                        views: 0,
-                        created_at: firebase.firestore.FieldValue.serverTimestamp()
-                    };
-
-                    await db.collection('posts').add(postData);
-
-                    // Clear form and reload posts
-                    setNewPost({ title: '', content: '', post_type: 'tip', location: '', tags: '' });
-                    await loadPosts();
-                    alert('🎉 Post shared successfully!');
-                } catch (error) {
-                    console.error('Error creating post:', error);
-                    alert('❌ Error sharing post. Please try again.');
-                } finally {
-                    setPosting(false);
-                }
-            };
-
-            const handleQuickAuth = () => {
-                const username = prompt('Enter your username:') || 'BikerUser' + Math.floor(Math.random() * 1000);
-                const userData = {
-                    uid: 'user_' + Date.now(),
-                    username: username,
-                    displayName: username,
-                    email: username.toLowerCase() + '@thebikerzone.com',
-                    membership_tier: username.toLowerCase() === 'wallydk85' ? 'owner' : 'free'
-                };
-                setUser(userData);
-                setShowAuthDialog(false);
-
-                // Save user to Firebase (optional)
-                db.collection('users').doc(userData.uid).set(userData).catch(console.error);
-            };
-
-            const handleLikePost = async (postId) => {
-                if (!user) {
-                    setShowAuthDialog(true);
-                    return;
-                }
-
-                try {
-                    const postRef = db.collection('posts').doc(postId);
-                    await db.runTransaction(async (transaction) => {
-                        const doc = await transaction.get(postRef);
-                        if (doc.exists) {
-                            const newLikes = (doc.data().likes || 0) + 1;
-                            transaction.update(postRef, { likes: newLikes });
-                        }
-                    });
-                    loadPosts(); // Refresh to show updated likes
-                } catch (error) {
-                    console.error('Error liking post:', error);
-                }
-            };
-
-            // Render (structure identical to your original)
-            return React.createElement('div', { className: 'min-h-screen bg-gray-50' },
-                // Header
-                React.createElement('header', { className: 'sticky top-0 z-50 border-b bg-white shadow-sm' },
-                    React.createElement('div', { className: 'container mx-auto px-4 h-16 flex items-center justify-between' },
-                        React.createElement('div', { className: 'flex items-center space-x-2' },
-                            React.createElement('span', { className: 'text-2xl' }, '🏍️'),
-                            React.createElement('h1', { className: 'text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent' }, 'TheBikerZone')
-                        ),
-
-                        React.createElement('nav', { className: 'hidden md:flex items-center space-x-6' },
-                            React.createElement('a', { href: '#all', className: 'text-gray-600 hover:text-orange-600' }, 'All Posts'),
-                            React.createElement('a', { href: '#tips', className: 'text-gray-600 hover:text-orange-600' }, 'Tips'),
-                            React.createElement('a', { href: '#roads', className: 'text-gray-600 hover:text-orange-600' }, 'Roads'),
-                            React.createElement('a', { href: '#tech', className: 'text-gray-600 hover:text-orange-600' }, 'Tech')
-                        ),
-
-                        React.createElement('div', { className: 'flex items-center space-x-4' },
-                            user ? React.createElement('div', { className: 'flex items-center space-x-3' },
-                                React.createElement('span', { className: 'text-sm font-medium flex items-center' },
-                                    '👋 ', user.username || user.displayName,
-                                    user.membership_tier === 'owner' && React.createElement('span', { className: 'ml-1' }, '🛡️')
-                                ),
-                                React.createElement('button', {
-                                    className: 'text-gray-600 hover:text-gray-800 text-sm border border-gray-300 px-3 py-1 rounded',
-                                    onClick: () => setUser(null)
-                                }, 'Logout')
-                            ) : React.createElement('button', {
-                                className: 'bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded flex items-center',
-                                onClick: () => setShowAuthDialog(true)
-                            }, '🚀 Join Community')
-                        )
-                    )
-                ),
-
-                // Hero Section
-                React.createElement('section', { className: 'relative h-80 flex items-center justify-center overflow-hidden' },
-                    React.createElement('div', {
-                        className: 'absolute inset-0 bg-cover bg-center bg-no-repeat',
-                        style: { backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('https://images.unsplash.com/photo-1581422228845-cbd91de24e2d')" }
-                    }),
-                    React.createElement('div', { className: 'relative z-10 text-center text-white px-4 max-w-4xl mx-auto' },
-                        React.createElement('h1', { className: 'text-4xl md:text-6xl font-bold mb-4' }, 'Ride. Share. Explore.'),
-                        React.createElement('p', { className: 'text-lg md:text-xl mb-6 opacity-90' },
-                            'The ultimate community for motorcycle enthusiasts worldwide.'
-                        ),
-                        !user && React.createElement('button', {
-                            className: 'bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg text-lg',
-                            onClick: () => setShowAuthDialog(true)
-                        }, '🏍️ Join TheBikerZone')
-                    )
-                ),
-
-                // AdSense Hero Ad
-                React.createElement('div', { className: 'container mx-auto px-4 py-4' },
-                    React.createElement('div', { className: 'bg-gray-100 border-2 border-dashed border-gray-300 p-4 text-center text-gray-500 rounded' },
-                        React.createElement('ins', {
-                            className: 'adsbygoogle',
-                            style: { display: 'block', minHeight: '200px' },
-                            'data-ad-client': 'ca-pub-9609537441494705',
-                            'data-ad-slot': 'auto',
-                            'data-ad-format': 'auto',
-                            'data-full-width-responsive': 'true'
-                        }),
-                        React.createElement('p', { className: 'text-sm mt-2' }, 'AdSense Ad Space')
-                    )
-                ),
-
-                // Main Content
-                React.createElement('div', { className: 'container mx-auto px-4 py-8' },
-
-                    // Post Creation Form (if logged in)
-                    user && React.createElement('div', { className: 'mb-8 bg-white p-6 rounded-lg shadow' },
-                        React.createElement('h3', { className: 'text-lg font-semibold mb-4 flex items-center' },
-                            React.createElement('span', { className: 'mr-2' }, '✍️'), 'Share Your Experience'
-                        ),
-                        React.createElement('form', { onSubmit: handleSubmitPost },
-                            React.createElement('input', {
-                                type: 'text',
-                                placeholder: 'What would you like to share?',
-                                className: 'w-full p-3 border border-gray-300 rounded mb-4 focus:border-orange-500 focus:outline-none',
-                                value: newPost.title,
-                                onChange: (e) => setNewPost({ ...newPost, title: e.target.value }),
-                                required: true
-                            }),
-                            React.createElement('textarea', {
-                                placeholder: 'Tell us about your motorcycle experience, tips, or technical knowledge...',
-                                className: 'w-full p-3 border border-gray-300 rounded mb-4 focus:border-orange-500 focus:outline-none',
-                                rows: 4,
-                                value: newPost.content,
-                                onChange: (e) => setNewPost({ ...newPost, content: e.target.value }),
-                                required: true
-                            }),
-                            React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 mb-4' },
-                                React.createElement('select', {
-                                    className: 'p-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none',
-                                    value: newPost.post_type,
-                                    onChange: (e) => setNewPost({ ...newPost, post_type: e.target.value })
-                                },
-                                    React.createElement('option', { value: 'tip' }, '⚡ Tip & Trick'),
-                                    React.createElement('option', { value: 'road' }, '🗺️ Road Adventure'),
-                                    React.createElement('option', { value: 'tech' }, '🔧 Tech Experience')
-                                ),
-                                React.createElement('input', {
-                                    type: 'text',
-                                    placeholder: 'Location (optional)',
-                                    className: 'p-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none',
-                                    value: newPost.location,
-                                    onChange: (e) => setNewPost({ ...newPost, location: e.target.value })
-                                }),
-                                React.createElement('input', {
-                                    type: 'text',
-                                    placeholder: 'Tags (comma separated)',
-                                    className: 'p-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none',
-                                    value: newPost.tags,
-                                    onChange: (e) => setNewPost({ ...newPost, tags: e.target.value })
-                                })
-                            ),
-                            React.createElement('button', {
-                                type: 'submit',
-                                className: 'bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg flex items-center',
-                                disabled: posting
-                            }, posting ? '⏳ Posting...' : '🚀 Share Post')
-                        )
-                    ),
-
-                    // Tabs
-                    React.createElement('div', { className: 'mb-6' },
-                        React.createElement('div', { className: 'flex border-b' },
-                            ['all', 'tip', 'road', 'tech'].map(tab =>
-                                React.createElement('button', {
-                                    key: tab,
-                                    className: `px-4 py-2 border-b-2 transition-colors ${activeTab === tab ? 'border-orange-600 text-orange-600' : 'border-transparent text-gray-600 hover:text-orange-600'}`,
-                                    onClick: () => setActiveTab(tab)
-                                },
-                                    tab === 'all' ? 'All Posts' :
-                                    tab === 'tip' ? '⚡ Tips' :
-                                    tab === 'road' ? '🗺️ Roads' : '🔧 Tech'
-                                )
-                            )
-                        )
-                    ),
-
-                    // Posts Grid
-                    loading ? React.createElement('div', { className: 'text-center py-12' },
-                        React.createElement('div', { className: 'animate-pulse' },
-                            React.createElement('div', { className: 'text-gray-500' }, '🔄 Loading posts...')
-                        )
-                    ) :
-                    posts.length === 0 ? React.createElement('div', { className: 'text-center py-12 bg-white rounded-lg shadow' },
-                        React.createElement('div', { className: 'text-6xl mb-4' }, '🏍️'),
-                        React.createElement('h3', { className: 'text-xl font-semibold mb-2' }, 'No posts yet!'),
-                        React.createElement('p', { className: 'text-gray-600 mb-4' }, 'Be the first to share your motorcycle experience.'),
-                        !user && React.createElement('button', {
-                            className: 'bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg',
-                            onClick: () => setShowAuthDialog(true)
-                        }, '🚀 Join & Post First!')
-                    ) :
-                    React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' },
-                        posts.map((post, index) =>
-                            React.createElement(React.Fragment, { key: post.id },
-                                React.createElement('div', { className: 'bg-white rounded-lg shadow hover:shadow-lg transition-shadow' },
-                                    React.createElement('div', { className: 'p-6' },
-                                        React.createElement('div', { className: 'flex items-center justify-between mb-3' },
-                                            React.createElement('div', { className: 'flex items-center space-x-3' },
-                                                React.createElement('div', { className: 'w-10 h-10 bg-gradient-to-r from-orange-400 to-red-500 rounded-full flex items-center justify-center' },
-                                                    React.createElement('span', { className: 'text-white font-bold text-sm' }, (post.username || 'U')[0].toUpperCase())
-                                                ),
-                                                React.createElement('div', null,
-                                                    React.createElement('div', { className: 'font-medium text-sm' }, post.username),
-                                                    React.createElement('div', { className: 'text-xs text-gray-500' },
-                                                        post.created_at ? new Date(post.created_at).toLocaleDateString() : 'Just now'
-                                                    )
-                                                )
-                                            ),
-                                            React.createElement('span', {
-                                                className: `px-3 py-1 rounded-full text-xs font-medium ${
-                                                    post.post_type === 'tip' ? 'bg-blue-100 text-blue-700' :
-                                                    post.post_type === 'road' ? 'bg-green-100 text-green-700' :
-                                                    'bg-purple-100 text-purple-700'
-                                                }`
-                                            },
-                                                post.post_type === 'tip' ? '⚡ Tip' :
-                                                post.post_type === 'road' ? '🗺️ Road' : '🔧 Tech'
-                                            )
-                                        ),
-                                        React.createElement('h3', { className: 'font-bold text-lg mb-2 line-clamp-2' }, post.title || post.content.slice(0,60)),
-                                        React.createElement('p', { className: 'text-gray-600 text-sm mb-4 line-clamp-3' }, post.content),
-                                        post.location && React.createElement('div', { className: 'flex items-center text-sm text-gray-500 mb-3' },
-                                            React.createElement('span', { className: 'mr-1' }, '📍'),
-                                            post.location
-                                        ),
-                                        post.tags && Array.isArray(post.tags) && post.tags.length > 0 && React.createElement('div', { className: 'flex flex-wrap gap-1 mb-4' },
-                                            post.tags.slice(0, 3).map((tag, i) =>
-                                                React.createElement('span', { key: i, className: 'px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs' }, tag)
-                                            )
-                                        ),
-                                        React.createElement('div', { className: 'flex items-center justify-between pt-3 border-t border-gray-100' },
-                                            React.createElement('div', { className: 'flex items-center space-x-4' },
-                                                React.createElement('button', {
-                                                    className: 'flex items-center space-x-1 text-gray-500 hover:text-red-500 transition-colors',
-                                                    onClick: () => handleLikePost(post.id)
-                                                },
-                                                    React.createElement('span', null, '❤️'),
-                                                    React.createElement('span', { className: 'text-sm' }, post.likes || 0)
-                                                ),
-                                                React.createElement('span', { className: 'flex items-center space-x-1 text-gray-500' },
-                                                    React.createElement('span', null, '👁️'),
-                                                    React.createElement('span', { className: 'text-sm' }, post.views || 0)
-                                                )
-                                            ),
-                                            post.username === user?.username && React.createElement('span', { className: 'text-xs text-gray-400' }, 'Your post')
-                                        )
-                                    )
-                                ),
-
-                                // In-feed ad after every 2nd post
-                                (index + 1) % 2 === 0 && index < posts.length - 1 && React.createElement('div', { className: 'col-span-full bg-gray-100 border-2 border-dashed border-gray-300 p-4 text-center text-gray-500 rounded' },
-                                    React.createElement('ins', {
-                                        className: 'adsbygoogle',
-                                        style: { display: 'block', minHeight: '200px' },
-                                        'data-ad-client': 'ca-pub-9609537441494705',
-                                        'data-ad-slot': 'auto',
-                                        'data-ad-format': 'fluid'
-                                    }),
-                                    React.createElement('p', { className: 'text-sm mt-2' }, 'In-Feed Ad')
-                                )
-                            )
-                        )
-                    )
-                ),
-
-                // Footer AdSense
-                React.createElement('div', { className: 'container mx-auto px-4 py-4' },
-                    React.createElement('div', { className: 'bg-gray-100 border-2 border-dashed border-gray-300 p-4 text-center text-gray-500 rounded' },
-                        React.createElement('ins', {
-                            className: 'adsbygoogle',
-                            style: { display: 'block', minHeight: '150px' },
-                            'data-ad-client': 'ca-pub-9609537441494705',
-                            'data-ad-slot': 'auto',
-                            'data-ad-format': 'auto'
-                        }),
-                        React.createElement('p', { className: 'text-sm mt-2' }, 'Footer Ad Space')
-                    )
-                ),
-
-                // Auth Dialog
-                showAuthDialog && React.createElement('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4' },
-                    React.createElement('div', { className: 'bg-white p-6 rounded-lg max-w-sm w-full' },
-                        React.createElement('div', { className: 'text-center mb-4' },
-                            React.createElement('div', { className: 'text-4xl mb-2' }, '🏍️'),
-                            React.createElement('h2', { className: 'text-xl font-bold' }, 'Welcome to TheBikerZone!'),
-                            React.createElement('p', { className: 'text-gray-600 text-sm' }, 'Join the ultimate motorcycle community')
-                        ),
-                        React.createElement('button', {
-                            className: 'w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg mb-3 font-semibold',
-                            onClick: handleQuickAuth
-                        }, '🚀 Join Community'),
-                        React.createElement('button', {
-                            className: 'w-full border-2 border-red-600 text-red-600 hover:bg-red-600 hover:text-white py-3 rounded-lg mb-3 font-semibold transition-colors',
-                            onClick: () => {
-                                setUser({
-                                    uid: 'owner_wallydk85',
-                                    username: 'Wallydk85',
-                                    email: 'wmacco85@gmail.com',
-                                    membership_tier: 'owner'
-                                });
-                                setShowAuthDialog(false);
-                            }
-                        }, '🛡️ Owner Login'),
-                        React.createElement('button', {
-                            className: 'w-full text-gray-500 py-2',
-                            onClick: () => setShowAuthDialog(false)
-                        }, 'Maybe later')
-                    )
-                )
-            );
-        }
-
-        // Initialize AdSense
-        setTimeout(() => {
-            try {
-                (adsbygoogle = window.adsbygoogle || []).push({});
-            } catch (e) {
-                console.log('AdSense loading...');
-            }
-        }, 2000);
-
-        // Render app using React 18 createRoot
+        setPosting(true);
         try {
-            const root = ReactDOM.createRoot(document.getElementById('root'));
-            root.render(React.createElement(App));
-        } catch (e) {
-            // fallback (shouldn't be necessary with React 18 UMD)
-            ReactDOM.render(React.createElement(App), document.getElementById('root'));
-        }
-    </script>
+          const fileUrl = newPost.file ? await uploadFile(newPost.file) : null;
+          const productLinks = newPost.productLinksInput
+            ? newPost.productLinksInput.split(',').map(s=>s.trim()).filter(Boolean)
+            : [];
+
+          await db.collection("posts").add({
+            title: newPost.title,
+            content: newPost.content,
+            username: user.displayName,
+            email: user.email,
+            avatar: user.avatar,
+            fileUrl,
+            productLinks,
+            post_type: newPost.post_type,
+            created_at: firebase.firestore.FieldValue.serverTimestamp()
+          });
+
+          setNewPost({ title:'', content:'', file:null, productLinksInput:'', post_type:'tip' });
+          loadPosts();
+        } catch(err) { console.error(err); alert("Errore nel caricamento del post."); }
+        setPosting(false);
+      }
+
+      async function handleLogin() {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        try { await auth.signInWithPopup(provider); } catch(err){ console.error(err); alert("Errore login"); }
+      }
+
+      function handleLogout() {
+        auth.signOut();
+      }
+
+      // Filtra i post in base alla ricerca
+      const filteredPosts = posts.filter(post => {
+        const q = searchQuery.toLowerCase();
+        return post.title.toLowerCase().includes(q)
+          || post.content.toLowerCase().includes(q)
+          || (post.productLinks && post.productLinks.some(link=>link.toLowerCase().includes(q)));
+      });
+
+      return React.createElement('div',{className:'max-w-3xl mx-auto p-4'},
+        // Header
+        React.createElement('div',{className:'flex justify-between items-center mb-4'},
+          React.createElement('h1',{className:'text-3xl font-bold'},'🏍️ TheBikerZone'),
+          user 
+            ? React.createElement('div',{className:'flex items-center space-x-3'},
+                React.createElement('img',{src:user.avatar,className:'w-10 h-10 rounded-full'}),
+                React.createElement('span',null,user.displayName),
+                React.createElement('button',{className:'bg-red-500 text-white px-3 py-1 rounded',onClick:handleLogout},'Logout')
+              )
+            : React.createElement('button',{className:'bg-green-600 text-white px-4 py-2 rounded',onClick:handleLogin},'Login con Google')
+        ),
+
+        // Form nuovo post
+        user && React.createElement('form',{onSubmit:handleSubmit,className:'bg-white p-6 rounded-lg shadow mb-6'},
+          React.createElement('input',{type:'text',placeholder:'Titolo del post',className:'w-full p-3 border rounded mb-3',value:newPost.title,onChange:e=>setNewPost({...newPost,title:e.target.value})}),
+          React.createElement('textarea',{placeholder:'Scrivi qui...',className:'w-full p-3 border rounded mb-3',rows:4,value:newPost.content,onChange:e=>setNewPost({...newPost,content:e.target.value})}),
+          React.createElement('input',{type:'text',placeholder:'Link prodotto (virgole)',className:'w-full border rounded px-3 py-2 mb-3',value:newPost.productLinksInput,onChange:e=>setNewPost({...newPost,productLinksInput:e.target.value})}),
+          React.createElement('input',{type:'file',accept:'image/*,video/*',className:'w-full mb-3',onChange:e=>setNewPost({...newPost,file:e.target.files[0]})}),
+          React.createElement('button',{type:'submit',className:'bg-orange-600 text-white px-6 py-3 rounded hover:bg-orange-700',disabled:posting},posting?'⏳ Pubblicazione...':'🚀 Pubblica')
+        ),
+
+        // Barra di ricerca
+        React.createElement('input',{
+          type:'text',
+          placeholder:'🔍 Cerca post...',
+          className:'w-full p-3 border rounded mb-6',
+          value:searchQuery,
+          onChange:e=>setSearchQuery(e.target.value)
+        }),
+
+        // Lista post
+        loading ? React.createElement('p',{className:'text-center text-gray-500'},'Caricamento post...') :
+        filteredPosts.length === 0 ? React.createElement('p',{className:'text-center text-gray-500'},'Nessun post trovato.') :
+        filteredPosts.map(post =>
+          React.createElement('div',{key:post.id,className:'bg-white p-6 rounded-lg shadow mb-4'},
+            React.createElement('div',{className:'flex items-center mb-2'},
+              React.createElement('img',{src:post.avatar,className:'w-10 h-10 rounded-full mr-2'}),
+              React.createElement('span',{className:'font-semibold mr-2'},post.username),
+              React.createElement('span',{className:'text-gray-500 text-sm'},post.email)
+            ),
+            React.createElement('h3',{className:'font-bold text-lg mb-2'},post.title),
+            React.createElement('p',{className:'text-gray-700 mb-3'},post.content),
+            post.fileUrl && (
+              post.fileUrl.match(/\.(mp4|mov|avi|webm)$/i)
+                ? React.createElement('video',{controls:true,src:post.fileUrl,className:'w-full rounded-lg mb-3'})
+                : React.createElement('img',{src:post.fileUrl,className:'w-full rounded-lg mb-3'})
+            ),
+            post.productLinks && post.productLinks.length > 0 && React.createElement('div',{className:'mt-2'},
+              post.productLinks.map((link,i)=>React.createElement('a',{key:i,href:link,target:'_blank',className:'text-blue-600 underline mr-2'},link))
+            ),
+            React.createElement('div',{className:'text-sm text-gray-500 mt-2'},`🕒 ${post.created_at?.toDate().toLocaleString() || 'Ora'}`)
+          )
+        )
+      );
+    }
+
+    ReactDOM.render(React.createElement(App), document.getElementById('root'));
+  </script>
 </body>
 </html>
