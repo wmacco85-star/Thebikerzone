@@ -1,166 +1,164 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TheBikerZone | Ultimate Motorcycle Community</title>
-
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
-
-  <!-- React -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TheBikerZone | Ultimate Motorcycle Community</title>
+    
+    <!-- Google AdSense -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9609537441494705" crossorigin="anonymous"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 </head>
-<body class="bg-gray-50">
-  <div id="root"></div>
+<body>
+    <div id="root"></div>
+    
+    <script>
+        const firebaseConfig = {
+          apiKey: "AIzaSyBmbEztflh7PrcHKggM2-lzoMhzNkOup5o",
+          authDomain: "thebikerzone-54094.firebaseapp.com",
+          projectId: "thebikerzone-54094",
+          storageBucket: "thebikerzone-54094.firebasestorage.app",
+          messagingSenderId: "654294837831",
+          appId: "1:654294837831:web:1c73e7707de9a2fd4a5f62"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        const storage = firebase.storage();
+        const MAX_MB = 200;
 
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyBmbEztflh7PrcHKggM2-lzoMhzNkOup5o",
-      authDomain: "thebikerzone-54094.firebaseapp.com",
-      projectId: "thebikerzone-54094",
-      storageBucket: "thebikerzone-54094.firebasestorage.app",
-      messagingSenderId: "654294837831",
-      appId: "1:654294837831:web:1c73e7707de9a2fd4a5f62"
-    };
-    firebase.initializeApp(firebaseConfig);
+        function App() {
+            const [user, setUser] = React.useState(null);
+            const [posts, setPosts] = React.useState([]);
+            const [loading, setLoading] = React.useState(true);
+            const [newPost, setNewPost] = React.useState({ title: '', content: '', post_type: 'tip', location: '', tags: '', file: null, links: '' });
+            const [posting, setPosting] = React.useState(false);
+            const [showAuthDialog, setShowAuthDialog] = React.useState(false);
 
-    const db = firebase.firestore();
-    const auth = firebase.auth();
-    const storage = firebase.storage();
+            React.useEffect(() => { loadPosts(); }, []);
 
-    const MAX_MB = 200;
+            async function loadPosts() {
+                setLoading(true);
+                const snapshot = await db.collection('posts').orderBy('created_at','desc').get();
+                setPosts(snapshot.docs.map(d=>({id:d.id,...d.data(), created_at:d.data().created_at?.toDate() || new Date()})));
+                setLoading(false);
+            }
 
-    function App() {
-      const [user, setUser] = React.useState(null);
-      const [posts, setPosts] = React.useState([]);
-      const [loading, setLoading] = React.useState(true);
-      const [newPost, setNewPost] = React.useState({ title:'', content:'', file:null, productLinksInput:'', post_type:'tip' });
-      const [posting, setPosting] = React.useState(false);
+            async function uploadFile(file) {
+                if(!file) return null;
+                const sizeMB = file.size / (1024*1024);
+                if(sizeMB>MAX_MB){ alert(`❌ File troppo grande (${sizeMB.toFixed(1)} MB). Massimo: ${MAX_MB} MB`); return null; }
+                const ref = storage.ref('uploads/'+Date.now()+'_'+file.name);
+                await ref.put(file);
+                return await ref.getDownloadURL();
+            }
 
-      React.useEffect(() => {
-        const unsub = auth.onAuthStateChanged(u => {
-          if(u){
-            setUser({
-              uid: u.uid,
-              displayName: u.displayName || u.email.split('@')[0],
-              email: u.email,
-              avatar: u.photoURL || 'https://i.pravatar.cc/100'
-            });
-          } else {
-            setUser(null);
-          }
-        });
-        loadPosts();
-        return () => unsub();
-      }, []);
+            async function handleSubmitPost(e){
+                e.preventDefault();
+                if(!user){ setShowAuthDialog(true); return; }
+                setPosting(true);
+                try{
+                    const fileUrl = await uploadFile(newPost.file);
+                    const linksArr = newPost.links.split(',').map(s=>s.trim()).filter(Boolean);
+                    await db.collection('posts').add({
+                        title:newPost.title,
+                        content:newPost.content,
+                        username:user.username,
+                        user_id:user.uid || user.username,
+                        tags:newPost.tags.split(',').map(t=>t.trim()).filter(Boolean),
+                        links:linksArr,
+                        fileUrl,
+                        post_type:newPost.post_type,
+                        likes:0,
+                        views:0,
+                        created_at:firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    setNewPost({ title:'', content:'', post_type:'tip', location:'', tags:'', file:null, links:'' });
+                    loadPosts();
+                    alert('🎉 Post condiviso!');
+                }catch(e){ console.error(e); alert('❌ Errore nel pubblicare.'); }
+                setPosting(false);
+            }
 
-      async function loadPosts() {
-        setLoading(true);
-        const snapshot = await db.collection("posts").orderBy("created_at","desc").get();
-        setPosts(snapshot.docs.map(d=>({id:d.id,...d.data()})));
-        setLoading(false);
-      }
+            const handleQuickAuth = () => {
+                const username = prompt('Inserisci username:') || 'BikerUser'+Math.floor(Math.random()*1000);
+                const userData = { uid:'user_'+Date.now(), username, email:username.toLowerCase()+'@thebikerzone.com', membership_tier:username.toLowerCase()==='wallydk85'?'owner':'free' };
+                setUser(userData);
+                setShowAuthDialog(false);
+                db.collection('users').doc(userData.uid).set(userData).catch(console.error);
+            };
 
-      async function uploadFile(file) {
-        if (!file) return null;
-        const sizeMB = file.size / (1024*1024);
-        if (sizeMB > MAX_MB) { alert(`❌ File troppo grande (${sizeMB.toFixed(1)} MB). Massimo: ${MAX_MB} MB`); return null; }
-        const ref = storage.ref().child('uploads/' + Date.now() + '_' + file.name);
-        await ref.put(file);
-        return await ref.getDownloadURL();
-      }
+            return React.createElement('div',{className:'min-h-screen bg-gray-50'},
+                // Header
+                React.createElement('header',{className:'sticky top-0 z-50 border-b bg-white shadow-sm'},
+                    React.createElement('div',{className:'container mx-auto px-4 h-16 flex items-center justify-between'},
+                        React.createElement('div',{className:'flex items-center space-x-2'},
+                            React.createElement('span',{className:'text-2xl'},'🏍️'),
+                            React.createElement('h1',{className:'text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent'},'TheBikerZone')
+                        ),
+                        React.createElement('div',null,
+                            user ? React.createElement('div',null,
+                                React.createElement('span',null,'👋 '+user.username),
+                                React.createElement('button',{onClick:()=>setUser(null)},'Logout')
+                            )
+                            : React.createElement('button',{onClick:()=>setShowAuthDialog(true)},'🚀 Join Community')
+                        )
+                    )
+                ),
 
-      async function handleSubmit(e) {
-        e.preventDefault();
-        if (!user) return alert("Accedi per pubblicare!");
+                // Form Post
+                user && React.createElement('form',{onSubmit:handleSubmitPost,className:'container mx-auto px-4 py-6 bg-white rounded shadow mb-6'},
+                    React.createElement('input',{type:'text',placeholder:'Titolo',className:'w-full p-3 border rounded mb-3',value:newPost.title,onChange:e=>setNewPost({...newPost,title:e.target.value}),required:true}),
+                    React.createElement('textarea',{placeholder:'Contenuto',className:'w-full p-3 border rounded mb-3',rows:4,value:newPost.content,onChange:e=>setNewPost({...newPost,content:e.target.value}),required:true}),
+                    React.createElement('input',{type:'text',placeholder:'Tags (comma separated)',className:'w-full p-3 border rounded mb-3',value:newPost.tags,onChange:e=>setNewPost({...newPost,tags:e.target.value})}),
+                    React.createElement('input',{type:'text',placeholder:'Links (comma separated)',className:'w-full p-3 border rounded mb-3',value:newPost.links,onChange:e=>setNewPost({...newPost,links:e.target.value})}),
+                    React.createElement('input',{type:'file',accept:'image/*,video/*',className:'w-full mb-3',onChange:e=>setNewPost({...newPost,file:e.target.files[0]})}),
+                    React.createElement('button',{type:'submit',className:'bg-orange-600 text-white px-6 py-3 rounded hover:bg-orange-700',disabled:posting},posting?'⏳ Pubblicazione...':'🚀 Pubblica')
+                ),
 
-        setPosting(true);
-        try {
-          const fileUrl = newPost.file ? await uploadFile(newPost.file) : null;
-          const productLinks = newPost.productLinksInput
-            ? newPost.productLinksInput.split(',').map(s=>s.trim()).filter(Boolean)
-            : [];
+                // Posts
+                React.createElement('div',{className:'container mx-auto px-4'},
+                    loading ? React.createElement('p',{className:'text-center text-gray-500'},'🔄 Loading posts...') :
+                    posts.map(post=>React.createElement('div',{key:post.id,className:'bg-white p-4 rounded shadow mb-4'},
+                        React.createElement('div',{className:'flex items-center mb-2'},
+                            React.createElement('span',{className:'font-semibold mr-2'},post.username),
+                            React.createElement('span',{className:'text-gray-500 text-sm'},post.user_id)
+                        ),
+                        React.createElement('h3',{className:'font-bold mb-2'},post.title),
+                        React.createElement('p',{className:'mb-2'},post.content),
+                        post.fileUrl && (post.fileUrl.match(/\.(mp4|mov|avi|webm)$/i)
+                            ? React.createElement('video',{controls:true,src:post.fileUrl,className:'w-full mb-2'})
+                            : React.createElement('img',{src:post.fileUrl,className:'w-full mb-2'})
+                        ),
+                        post.links && post.links.length>0 && React.createElement('div',{className:'mb-2'},post.links.map((l,i)=>React.createElement('a',{key:i,href:l,target:'_blank',className:'text-blue-600 underline mr-2'},l))),
+                        post.tags && post.tags.length>0 && React.createElement('div',{className:'text-sm text-gray-500'},'Tags: '+post.tags.join(', '))
+                    ))
+                ),
 
-          await db.collection("posts").add({
-            title: newPost.title,
-            content: newPost.content,
-            username: user.displayName,
-            email: user.email,
-            avatar: user.avatar,
-            fileUrl,
-            productLinks,
-            post_type: newPost.post_type,
-            created_at: firebase.firestore.FieldValue.serverTimestamp()
-          });
+                // Auth Dialog
+                showAuthDialog && React.createElement('div',{className:'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'},
+                    React.createElement('div',{className:'bg-white p-6 rounded-lg max-w-sm w-full'},
+                        React.createElement('button',{className:'w-full bg-orange-600 text-white py-3 rounded-lg mb-3',onClick:handleQuickAuth},'🚀 Join Community'),
+                        React.createElement('button',{className:'w-full text-gray-500 py-2',onClick:()=>setShowAuthDialog(false)},'Maybe later')
+                    )
+                )
+            );
+        }
 
-          setNewPost({ title:'', content:'', file:null, productLinksInput:'', post_type:'tip' });
-          loadPosts();
-        } catch(err) { console.error(err); alert("Errore nel caricamento del post."); }
-        setPosting(false);
-      }
+        ReactDOM.render(React.createElement(App), document.getElementById('root'));
+    </script>
 
-      async function handleLogin() {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        try { await auth.signInWithPopup(provider); } catch(err){ console.error(err); alert("Errore login"); }
-      }
-
-      function handleLogout() {
-        auth.signOut();
-      }
-
-      return React.createElement('div',{className:'max-w-3xl mx-auto p-4'},
-        React.createElement('div',{className:'flex justify-between items-center mb-6'},
-          React.createElement('h1',{className:'text-3xl font-bold'},'🏍️ TheBikerZone'),
-          user 
-            ? React.createElement('div',{className:'flex items-center space-x-3'},
-                React.createElement('img',{src:user.avatar,className:'w-10 h-10 rounded-full'}),
-                React.createElement('span',null,user.displayName),
-                React.createElement('button',{className:'bg-red-500 text-white px-3 py-1 rounded',onClick:handleLogout},'Logout')
-              )
-            : React.createElement('button',{className:'bg-green-600 text-white px-4 py-2 rounded',onClick:handleLogin},'Login con Google')
-        ),
-
-        user && React.createElement('form',{onSubmit:handleSubmit,className:'bg-white p-6 rounded-lg shadow mb-8'},
-          React.createElement('input',{type:'text',placeholder:'Titolo del post',className:'w-full p-3 border rounded mb-3',value:newPost.title,onChange:e=>setNewPost({...newPost,title:e.target.value})}),
-          React.createElement('textarea',{placeholder:'Scrivi qui...',className:'w-full p-3 border rounded mb-3',rows:4,value:newPost.content,onChange:e=>setNewPost({...newPost,content:e.target.value})}),
-          React.createElement('input',{type:'text',placeholder:'Link prodotto (virgole)',className:'w-full border rounded px-3 py-2 mb-3',value:newPost.productLinksInput,onChange:e=>setNewPost({...newPost,productLinksInput:e.target.value})}),
-          React.createElement('input',{type:'file',accept:'image/*,video/*',className:'w-full mb-3',onChange:e=>setNewPost({...newPost,file:e.target.files[0]})}),
-          React.createElement('button',{type:'submit',className:'bg-orange-600 text-white px-6 py-3 rounded hover:bg-orange-700',disabled:posting},posting?'⏳ Pubblicazione...':'🚀 Pubblica')
-        ),
-
-        loading ? React.createElement('p',{className:'text-center text-gray-500'},'Caricamento post...') :
-        posts.map(post =>
-          React.createElement('div',{key:post.id,className:'bg-white p-6 rounded-lg shadow mb-4'},
-            React.createElement('div',{className:'flex items-center mb-2'},
-              React.createElement('img',{src:post.avatar,className:'w-10 h-10 rounded-full mr-2'}),
-              React.createElement('span',{className:'font-semibold mr-2'},post.username),
-              React.createElement('span',{className:'text-gray-500 text-sm'},post.email)
-            ),
-            React.createElement('h3',{className:'font-bold text-lg mb-2'},post.title),
-            React.createElement('p',{className:'text-gray-700 mb-3'},post.content),
-            post.fileUrl && (
-              post.fileUrl.match(/\.(mp4|mov|avi|webm)$/i)
-                ? React.createElement('video',{controls:true,src:post.fileUrl,className:'w-full rounded-lg mb-3'})
-                : React.createElement('img',{src:post.fileUrl,className:'w-full rounded-lg mb-3'})
-            ),
-            post.productLinks && post.productLinks.length > 0 && React.createElement('div',{className:'mt-2'},
-              post.productLinks.map((link,i)=>React.createElement('a',{key:i,href:link,target:'_blank',className:'text-blue-600 underline mr-2'},link))
-            ),
-            React.createElement('div',{className:'text-sm text-gray-500 mt-2'},`🕒 ${post.created_at?.toDate().toLocaleString() || 'Ora'}`)
-          )
-        )
-      );
-    }
-
-    ReactDOM.render(React.createElement(App), document.getElementById('root'));
-  </script>
+    <!-- React -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 </body>
 </html>
