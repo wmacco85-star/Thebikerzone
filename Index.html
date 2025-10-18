@@ -1,213 +1,192 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>TheBikerZone | Ultimate Motorcycle Community</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TheBikerZone | Ultimate Motorcycle Community</title>
 
-    <!-- Google AdSense -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9609537441494705" crossorigin="anonymous"></script>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+<!-- Google AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9609537441494705" crossorigin="anonymous"></script>
 
-    <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+<!-- Firebase & React -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+import { getFirestore, collection, addDoc, doc, onSnapshot, query, orderBy, updateDoc, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
+
+import React, { useState, useEffect } from "https://cdn.skypack.dev/react@18.2.0";
+import ReactDOM from "https://cdn.skypack.dev/react-dom@18.2.0";
+
+// 🔥 CONFIGURA FIREBASE QUI
+const firebaseConfig = {
+  apiKey: "AIzaSyBmbEztflh7PrcHKggM2-lzoMhzNkOup5o",
+  authDomain: "thebikerzone-54094.firebaseapp.com",
+  projectId: "thebikerzone-54094",
+  storageBucket: "thebikerzone-54094.firebasestorage.app",
+  messagingSenderId: "654294837831",
+  appId: "1:654294837831:web:1c73e7707de9a2fd4a5f62"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+function App() {
+  const [user, setUser] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [activeTab, setActiveTab] = useState("all");
+  const [newPost, setNewPost] = useState({ title: "", content: "", post_type: "tip", tags: "" });
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+
+  // Carica i post in tempo reale
+  useEffect(() => {
+    let q = query(collection(db, "posts"), orderBy("created_at", "desc"));
+    if (activeTab !== "all") {
+      q = query(collection(db, "posts"), where("post_type", "==", activeTab), orderBy("created_at", "desc"));
+    }
+    const unsubscribe = onSnapshot(q, snapshot => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPosts(data);
+    });
+    return () => unsubscribe();
+  }, [activeTab]);
+
+  // Mostra AdSense
+  useEffect(() => {
+    setTimeout(() => {
+      try { (adsbygoogle = window.adsbygoogle || []).push({}); } catch(e) { console.log("AdSense loading..."); }
+    }, 2000);
+  }, []);
+
+  const handleQuickAuth = () => {
+    const username = prompt("Enter your username:") || "BikerUser" + Math.floor(Math.random()*1000);
+    const membership_tier = username.toLowerCase() === "wallydk85" ? "owner" : "free";
+    const userData = { uid: "user_" + Date.now(), username, membership_tier };
+    setUser(userData);
+    setShowAuthDialog(false);
+  };
+
+  const handleSubmitPost = async (e) => {
+    e.preventDefault();
+    if (!user) { setShowAuthDialog(true); return; }
+    await addDoc(collection(db, "posts"), {
+      ...newPost,
+      user_id: user.uid,
+      username: user.username,
+      membership_tier: user.membership_tier,
+      tags: newPost.tags.split(",").map(t => t.trim()).filter(Boolean),
+      likes: 0,
+      views: 0,
+      created_at: serverTimestamp()
+    });
+    setNewPost({ title: "", content: "", post_type: "tip", tags: "" });
+  };
+
+  const handleLikePost = async (postId, currentLikes) => {
+    if (!user) { setShowAuthDialog(true); return; }
+    const postRef = doc(db, "posts", postId);
+    await updateDoc(postRef, { likes: currentLikes + 1 });
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="sticky top-0 z-50 border-b bg-white shadow-sm">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <span className="text-2xl">🏍️</span>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">TheBikerZone</h1>
+          </div>
+          <nav className="flex space-x-4">
+            {["all","tip","roads","tech"].map(tab => (
+              <button key={tab} className={`capitalize ${activeTab===tab ? "text-orange-600 font-bold":"text-gray-600"}`} onClick={()=>setActiveTab(tab)}>
+                {tab==="tip"?"Tips":tab==="roads"?"Roads":tab==="tech"?"Tech":"All"}
+              </button>
+            ))}
+          </nav>
+          <div>
+            {user ? (
+              <div className="flex items-center space-x-4">
+                <span>👋 {user.username} {user.membership_tier==="owner" && <span className="ml-1 text-yellow-500">🛡️</span>}</span>
+                <button onClick={()=>setUser(null)} className="text-sm px-3 py-1 border rounded">Logout</button>
+              </div>
+            ) : (
+              <button onClick={()=>setShowAuthDialog(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded">Join</button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Hero */}
+      <section className="relative h-80 flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: "linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('https://images.unsplash.com/photo-1581422228845-cbd91de24e2d')" }}></div>
+        <div className="relative z-10 text-center text-white px-4 max-w-4xl mx-auto">
+          <h1 className="text-4xl md:text-6xl font-bold mb-4">Ride. Share. Explore.</h1>
+          <p className="text-lg md:text-xl mb-6 opacity-90">The ultimate community for motorcycle enthusiasts worldwide.</p>
+        </div>
+      </section>
+
+      {/* Post Form */}
+      {user && (
+        <section className="container mx-auto p-4">
+          <form onSubmit={handleSubmitPost} className="bg-white p-4 rounded shadow">
+            <input type="text" placeholder="Title" value={newPost.title} onChange={e=>setNewPost({...newPost,title:e.target.value})} className="w-full mb-2 p-2 border rounded"/>
+            <textarea placeholder="Content" value={newPost.content} onChange={e=>setNewPost({...newPost,content:e.target.value})} className="w-full mb-2 p-2 border rounded"></textarea>
+            <input placeholder="Tags (comma separated)" value={newPost.tags} onChange={e=>setNewPost({...newPost,tags:e.target.value})} className="w-full mb-2 p-2 border rounded"/>
+            <select value={newPost.post_type} onChange={e=>setNewPost({...newPost,post_type:e.target.value})} className="w-full mb-2 p-2 border rounded">
+              <option value="tip">Tip</option>
+              <option value="roads">Roads</option>
+              <option value="tech">Tech</option>
+            </select>
+            <button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded">Post</button>
+          </form>
+        </section>
+      )}
+
+      {/* Posts List */}
+      <section className="container mx-auto p-4 space-y-4">
+        {posts.map(post => (
+          <div key={post.id} className="bg-white p-4 rounded shadow">
+            <h2 className="font-bold text-lg">{post.title} {post.membership_tier==="owner" && <span className="ml-1 text-yellow-500">🛡️</span>}</h2>
+            <p>{post.content}</p>
+            <p className="text-sm text-gray-500">By {post.username} | Likes: {post.likes}</p>
+            <button onClick={()=>handleLikePost(post.id, post.likes)} className="text-orange-600 mt-2">👍 Like</button>
+          </div>
+        ))}
+      </section>
+
+      {/* AdSense */}
+      <section className="container mx-auto p-4 text-center">
+        <ins className="adsbygoogle"
+          style={{ display: "block", width: "100%", height: "90px" }}
+          data-ad-client="ca-pub-9609537441494705"
+          data-ad-slot="1234567890"
+          data-ad-format="auto"
+          data-full-width-responsive="true"></ins>
+      </section>
+
+      {/* Auth Dialog */}
+      {showAuthDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded shadow-lg w-80 text-center">
+            <h2 className="text-xl font-bold mb-4">Join TheBikerZone</h2>
+            <p className="mb-4">Enter a username to join the community</p>
+            <button onClick={handleQuickAuth} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded">Continue</button>
+            <button onClick={()=>setShowAuthDialog(false)} className="mt-2 text-gray-600">Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
 </head>
 <body>
-    <div id="root"></div>
-
-    <script>
-        // 🔥 FIREBASE CONFIG REAL
-        const firebaseConfig = {
-            apiKey: "AIzaSyBmbEztflh7PrcHKggM2-lzoMhzNkOup5o",
-            authDomain: "thebikerzone-54094.firebaseapp.com",
-            projectId: "thebikerzone-54094",
-            storageBucket: "thebikerzone-54094.firebasestorage.app",
-            messagingSenderId: "654294837831",
-            appId: "1:654294837831:web:1c73e7707de9a2fd4a5f62"
-        };
-
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
-
-        // Main App
-        function App() {
-            const [user, setUser] = React.useState(null);
-            const [posts, setPosts] = React.useState([]);
-            const [loading, setLoading] = React.useState(true);
-            const [showAuthDialog, setShowAuthDialog] = React.useState(false);
-            const [activeTab, setActiveTab] = React.useState('all');
-            const [posting, setPosting] = React.useState(false);
-            const [newPost, setNewPost] = React.useState({
-                title: '',
-                content: '',
-                post_type: 'tip',
-                location: '',
-                tags: ''
-            });
-
-            // Load posts
-            React.useEffect(() => {
-                loadPosts();
-            }, [activeTab]);
-
-            const loadPosts = async () => {
-                try {
-                    let query = db.collection('posts').orderBy('created_at', 'desc');
-
-                    if (activeTab !== 'all') {
-                        query = query.where('post_type', '==', activeTab);
-                    }
-
-                    const snapshot = await query.get();
-                    const postsData = snapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...doc.data(),
-                        created_at: doc.data().created_at?.toDate() || new Date()
-                    }));
-
-                    setPosts(postsData);
-                } catch (error) {
-                    console.error('Error loading posts:', error);
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            const handleSubmitPost = async (e) => {
-                e.preventDefault();
-                if (!user) {
-                    setShowAuthDialog(true);
-                    return;
-                }
-
-                setPosting(true);
-                try {
-                    const postData = {
-                        ...newPost,
-                        username: user.username,
-                        user_id: user.uid || user.username,
-                        tags: newPost.tags.split(',').map(tag => tag.trim()).filter(Boolean),
-                        likes: 0,
-                        views: 0,
-                        created_at: firebase.firestore.FieldValue.serverTimestamp()
-                    };
-
-                    await db.collection('posts').add(postData);
-
-                    setNewPost({ title: '', content: '', post_type: 'tip', location: '', tags: '' });
-                    loadPosts();
-                    alert('🎉 Post shared successfully!');
-                } catch (error) {
-                    console.error('Error creating post:', error);
-                    alert('❌ Error sharing post. Please try again.');
-                } finally {
-                    setPosting(false);
-                }
-            };
-
-            const handleQuickAuth = () => {
-                const username = prompt('Enter your username:') || 'BikerUser' + Math.floor(Math.random() * 1000);
-                const userData = {
-                    uid: 'user_' + Date.now(),
-                    username: username,
-                    email: username.toLowerCase() + '@thebikerzone.com',
-                    membership_tier: username.toLowerCase() === 'wallydk85' ? 'owner' : 'free'
-                };
-                setUser(userData);
-                setShowAuthDialog(false);
-
-                db.collection('users').doc(userData.uid).set(userData).catch(console.error);
-            };
-
-            const handleLikePost = async (postId) => {
-                if (!user) {
-                    setShowAuthDialog(true);
-                    return;
-                }
-
-                try {
-                    const postRef = db.collection('posts').doc(postId);
-                    await db.runTransaction(async (transaction) => {
-                        const doc = await transaction.get(postRef);
-                        if (doc.exists) {
-                            const newLikes = (doc.data().likes || 0) + 1;
-                            transaction.update(postRef, { likes: newLikes });
-                        }
-                    });
-                    loadPosts();
-                } catch (error) {
-                    console.error('Error liking post:', error);
-                }
-            };
-
-            return React.createElement('div', { className: 'min-h-screen bg-gray-50' },
-                // Header
-                React.createElement('header', { className: 'sticky top-0 z-50 border-b bg-white shadow-sm' },
-                    React.createElement('div', { className: 'container mx-auto px-4 h-16 flex items-center justify-between' },
-                        React.createElement('div', { className: 'flex items-center space-x-2' },
-                            React.createElement('span', { className: 'text-2xl' }, '🏍️'),
-                            React.createElement('h1', { className: 'text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent' }, 'TheBikerZone')
-                        ),
-                        React.createElement('nav', { className: 'hidden md:flex items-center space-x-6' },
-                            React.createElement('a', { href: '#all', className: 'text-gray-600 hover:text-orange-600' }, 'All Posts'),
-                            React.createElement('a', { href: '#tips', className: 'text-gray-600 hover:text-orange-600' }, 'Tips'),
-                            React.createElement('a', { href: '#roads', className: 'text-gray-600 hover:text-orange-600' }, 'Roads'),
-                            React.createElement('a', { href: '#tech', className: 'text-gray-600 hover:text-orange-600' }, 'Tech')
-                        ),
-                        React.createElement('div', { className: 'flex items-center space-x-4' },
-                            user ? React.createElement('div', { className: 'flex items-center space-x-3' },
-                                React.createElement('span', { className: 'text-sm font-medium flex items-center' },
-                                    '👋 ', user.username,
-                                    user.membership_tier === 'owner' && React.createElement('span', { className: 'ml-1' }, '🛡️')
-                                ),
-                                React.createElement('button', {
-                                    className: 'text-gray-600 hover:text-gray-800 text-sm border border-gray-300 px-3 py-1 rounded',
-                                    onClick: () => setUser(null)
-                                }, 'Logout')
-                            ) : React.createElement('button', {
-                                className: 'bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded flex items-center',
-                                onClick: () => setShowAuthDialog(true)
-                            }, '🚀 Join Community')
-                        )
-                    )
-                ),
-                // Hero Section
-                React.createElement('section', { className: 'relative h-80 flex items-center justify-center overflow-hidden' },
-                    React.createElement('div', {
-                        className: 'absolute inset-0 bg-cover bg-center bg-no-repeat',
-                        style: { backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('https://images.unsplash.com/photo-1581422228845-cbd91de24e2d')" }
-                    }),
-                    React.createElement('div', { className: 'relative z-10 text-center text-white px-4 max-w-4xl mx-auto' },
-                        React.createElement('h1', { className: 'text-4xl md:text-6xl font-bold mb-4' }, 'Ride. Share. Explore.'),
-                        React.createElement('p', { className: 'text-lg md:text-xl mb-6 opacity-90' }, 'The ultimate community for motorcycle enthusiasts worldwide.'),
-                        !user && React.createElement('button', { className: 'bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg text-lg', onClick: () => setShowAuthDialog(true) }, '🏍️ Join TheBikerZone')
-                    )
-                )
-                // Il resto del codice (post, tab, auth dialog, ads) rimane identico e non è stato modificato
-            );
-        }
-
-        // Initialize AdSense
-        setTimeout(() => {
-            try {
-                (adsbygoogle = window.adsbygoogle || []).push({});
-            } catch (e) {
-                console.log('AdSense loading...');
-            }
-        }, 2000);
-
-        // Render app
-        ReactDOM.render(React.createElement(App), document.getElementById('root'));
-    </script>
-
-    <!-- React -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<div id="root"></div>
 </body>
 </html>
